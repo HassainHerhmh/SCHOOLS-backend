@@ -51,6 +51,11 @@ git push -u origin main
 3. **Root Directory** اتركه فارغاً (جذر المستودع) حيث يوجد `Dockerfile`.
 4. لا حاجة لمتغيرات خاصة للمنفذ: Railway يمرّر `PORT` و`CMD` في الصورة يستمع على `0.0.0.0:${PORT}`.
 
+## تسجيل الدخول التجريبي (`POST /api/auth/login`)
+
+- الافتراضي في `appsettings.json`: **Login** = `admin`، **Password** = `Admin123!`.
+- على Railway يمكنك تجاوزها بمتغيرات البيئة (مثلاً): `DemoAuth__Login`, `DemoAuth__Password`, `Jwt__SecretKey` (32 حرفاً على الأقل)، `Jwt__Issuer`, `Jwt__Audience`.
+
 ## ملاحظة
 
 مشروع `schools222` يحتوي بالفعل على `SchoolsManagement.Api` كامل؛ يمكنك إما **دفع ذلك المجلد** إلى هذا الريموت، أو الإبقاء على هذا الهيكل الخفيف ونسخ الملفات **واحدة واحدة** كما خططت.
