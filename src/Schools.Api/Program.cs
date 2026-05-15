@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Schools.Api.Services;
 
@@ -20,7 +21,7 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         policy
-            .SetIsOriginAllowed(static origin =>
+            .SetIsOriginAllowed(origin =>
             {
                 if (string.IsNullOrEmpty(origin))
                 {
@@ -40,6 +41,39 @@ builder.Services.AddCors(options =>
                     if (h.EndsWith(".railway.app", StringComparison.OrdinalIgnoreCase))
                     {
                         return true;
+                    }
+
+                    var hostForIp = h;
+                    if (hostForIp.Length >= 2 && hostForIp[0] == '[' && hostForIp[^1] == ']')
+                    {
+                        hostForIp = hostForIp.Substring(1, hostForIp.Length - 2);
+                    }
+
+                    if (IPAddress.TryParse(hostForIp, out var addr))
+                    {
+                        if (IPAddress.IsLoopback(addr))
+                        {
+                            return true;
+                        }
+
+                        if (addr.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            var b = addr.GetAddressBytes();
+                            if (b[0] == 10)
+                            {
+                                return true;
+                            }
+
+                            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                            {
+                                return true;
+                            }
+
+                            if (b[0] == 192 && b[1] == 168)
+                            {
+                                return true;
+                            }
+                        }
                     }
 
                     return false;
