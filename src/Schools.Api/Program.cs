@@ -1,10 +1,8 @@
 using System.Net;
 using System.Text.Json;
-using Schools.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<JwtTokenIssuer>();
 builder.Services
     .AddControllers()
     .AddJsonOptions(options =>

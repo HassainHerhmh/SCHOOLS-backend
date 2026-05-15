@@ -14,7 +14,7 @@ dotnet run
 ```
 
 - Swagger: `http://127.0.0.1:5088/swagger`
-- فحص سريع: `GET http://127.0.0.1:5088/api/health`
+- فحص سريع: `GET http://127.0.0.1:5088/api/Health` (أو `/api/health` حسب التوجيه)
 
 ## ربط المستودع على GitHub (مرة واحدة)
 
@@ -40,7 +40,15 @@ git push -u origin main
 
 1. إضافة `Microsoft.EntityFrameworkCore.SqlServer` + DbContext عند جاهزية جداول SQL.
 2. نسخ أو إعادة تسمية Controllers من مشروع `schools222/backend/SchoolsManagement.Api` حسب الحاجة.
-3. في Angular: تعيين `environment.apiUrl` إلى عنوان هذا الـ API على السيرفر.
+3. في Angular: تعيين `environment.apiUrl` إلى عنوان الـ API الفعلي (انظر أدناه).
+
+## تسجيل الدخول الحقيقي (Angular)
+
+**لا يوجد في هذا المستودع مستخدمون تجريبيون.** تسجيل الدخول الفعلي (ASP.NET Identity + JWT + SQL Server) موجود في:
+
+`schools222/backend/SchoolsManagement.Api` — المسار `POST /api/auth/login` كما تستدعيه `SessionAuthService` في Angular.
+
+ضع في `environment.apiUrl` عنوان تشغيل **SchoolsManagement.Api** (محلياً مثل `http://127.0.0.1:5000` أو عنوان السيرفر بعد نشره). مشروع **SCHOOLS-backend** هنا هيكل خفيف للنشر التدريجي فقط حتى تُنقل إليه الـ Controllers أو تستبدله بنشر المشروع الكامل.
 
 ## النشر على Railway
 
@@ -50,11 +58,6 @@ git push -u origin main
 2. في Railway: **Settings → Build → Builder** اختر **Dockerfile** إن لم يُكتشف تلقائياً، أو اترك الاكتشاف التلقائي بعد الدفع.
 3. **Root Directory** اتركه فارغاً (جذر المستودع) حيث يوجد `Dockerfile`.
 4. لا حاجة لمتغيرات خاصة للمنفذ: Railway يمرّر `PORT` و`CMD` في الصورة يستمع على `0.0.0.0:${PORT}`.
-
-## تسجيل الدخول التجريبي (`POST /api/auth/login`)
-
-- الافتراضي في `appsettings.json`: **Login** = `admin`، **Password** = `Admin123!`.
-- على Railway يمكنك تجاوزها بمتغيرات البيئة (مثلاً): `DemoAuth__Login`, `DemoAuth__Password`, `Jwt__SecretKey` (32 حرفاً على الأقل)، `Jwt__Issuer`, `Jwt__Audience`.
 
 ## ملاحظة
 
