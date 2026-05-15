@@ -42,6 +42,15 @@ git push -u origin main
 2. نسخ أو إعادة تسمية Controllers من مشروع `schools222/backend/SchoolsManagement.Api` حسب الحاجة.
 3. في Angular: تعيين `environment.apiUrl` إلى عنوان هذا الـ API على السيرفر.
 
+## النشر على Railway
+
+إذا ظهر **Build failed** أثناء *Build image*:
+
+1. تأكد أن المستودع يحتوي على **`Dockerfile`** في الجذر (موجود في هذا المشروع).
+2. في Railway: **Settings → Build → Builder** اختر **Dockerfile** إن لم يُكتشف تلقائياً، أو اترك الاكتشاف التلقائي بعد الدفع.
+3. **Root Directory** اتركه فارغاً (جذر المستودع) حيث يوجد `Dockerfile`.
+4. لا حاجة لمتغيرات خاصة للمنفذ: Railway يمرّر `PORT` و`CMD` في الصورة يستمع على `0.0.0.0:${PORT}`.
+
 ## ملاحظة
 
 مشروع `schools222` يحتوي بالفعل على `SchoolsManagement.Api` كامل؛ يمكنك إما **دفع ذلك المجلد** إلى هذا الريموت، أو الإبقاء على هذا الهيكل الخفيف ونسخ الملفات **واحدة واحدة** كما خططت.

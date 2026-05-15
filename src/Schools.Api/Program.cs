@@ -12,7 +12,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// بدون UseHttpsRedirection: منصات مثل Railway تتصل بالحاوية عبر HTTP داخلياً
 app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "SCHOOLS-backend", time = DateTimeOffset.UtcNow }));
 
