@@ -39,6 +39,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<VoucherJournalEntryRecord> VoucherJournalEntries => Set<VoucherJournalEntryRecord>();
     public DbSet<CurrencyExchangeRecord> CurrencyExchanges => Set<CurrencyExchangeRecord>();
     public DbSet<UserPagePermissionRecord> UserPagePermissions => Set<UserPagePermissionRecord>();
+    public DbSet<StudentPaymentRecord> StudentPayments => Set<StudentPaymentRecord>();
+    public DbSet<TransferApprovalRequestRecord> TransferApprovalRequests => Set<TransferApprovalRequestRecord>();
+    public DbSet<StudentDiscountRecord> StudentDiscounts => Set<StudentDiscountRecord>();
+    public DbSet<StudentDiscountApplicationRecord> StudentDiscountApplications => Set<StudentDiscountApplicationRecord>();
+    public DbSet<SubjectRecord> Subjects => Set<SubjectRecord>();
+    public DbSet<ExamRecord> Exams => Set<ExamRecord>();
+    public DbSet<GradeRuleRecord> GradeRules => Set<GradeRuleRecord>();
+    public DbSet<GradeRecord> Grades => Set<GradeRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -118,6 +126,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
             e.HasIndex(x => new { x.UserId, x.PermissionKey }).IsUnique();
             e.HasIndex(x => x.UserId);
+        });
+
+        builder.Entity<GradeRuleRecord>(e =>
+        {
+            e.HasIndex(x => new { x.ClassId, x.SubjectId }).IsUnique();
         });
     }
 }

@@ -81,6 +81,7 @@ public class AuthController : ControllerBase
             var roles = await _userManager.GetRolesAsync(user);
             var permissions = await _permissionService.GetEffectivePermissionsAsync(user);
             var isAdmin = await _permissionService.IsAdminAsync(user);
+            var fullAccess = await _permissionService.HasUnrestrictedAccessAsync(user);
             var token = _tokenService.CreateToken(user, roles, permissions.ToList());
             var expiry = _tokenService.GetExpiryUtc();
             var displayName = ResolveDisplayName(user);
@@ -97,6 +98,7 @@ public class AuthController : ControllerBase
                 Role = primaryRole,
                 Permissions = permissions.ToList(),
                 IsAdmin = isAdmin,
+                FullAccess = fullAccess,
             });
         }
 

@@ -30,6 +30,9 @@ public class GradeClass
     [Column("bus_fees", TypeName = "decimal(18,2)")]
     public decimal BusFees { get; set; }
 
+    [Column("default_min_pass_score", TypeName = "decimal(18,2)")]
+    public decimal DefaultMinPassScore { get; set; } = 50;
+
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }
 

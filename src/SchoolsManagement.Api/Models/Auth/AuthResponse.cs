@@ -27,5 +27,8 @@ public class AuthResponse
     public IList<string> Permissions { get; set; } = [];
 
     public bool IsAdmin { get; set; }
+
+    /// <summary>وصول كامل — Admin أو لم تُسجَّل له صلاحيات محددة.</summary>
+    public bool FullAccess { get; set; }
 }
 

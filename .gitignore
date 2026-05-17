@@ -1,6 +1,7 @@
 ## .NET
 bin/
 obj/
+artifacts-api-build-check/
 out/
 *.user
 *.suo

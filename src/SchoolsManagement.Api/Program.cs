@@ -23,10 +23,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
-        options.Password.RequireDigit = true;
-        options.Password.RequireUppercase = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequiredLength = 8;
+        options.Password.RequireDigit = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredLength = 4;
         options.User.RequireUniqueEmail = true;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
@@ -60,6 +61,7 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<UserPermissionService>();
+builder.Services.AddScoped<PermissionMatrixService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<SalaryJournalMonthEndHostedService>();
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -233,6 +235,24 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "فشل إنشاء جدول صلاحيات الصفحات.");
+    }
+
+    try
+    {
+        ApplicationUserPermissionsJsonBootstrap.EnsureColumn(db);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "فشل إضافة عمود permissions_json لجدول المستخدمين.");
+    }
+
+    try
+    {
+        SchoolExtendedTablesBootstrap.EnsureExists(db);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "فشل إنشاء جداول المدفوعات والخصومات والدرجات والمواد.");
     }
 
     try

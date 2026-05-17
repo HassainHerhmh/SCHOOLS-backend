@@ -42,7 +42,11 @@ public class ApiPermissionMiddleware
             return;
         }
 
-        if (context.User.IsInRole("Admin"))
+        var permissionClaims = context.User.Claims
+            .Where(c => c.Type == "permission")
+            .Select(c => c.Value)
+            .ToList();
+        if (permissionClaims.Count >= PermissionCatalog.AllKeys.Count)
         {
             await _next(context);
             return;

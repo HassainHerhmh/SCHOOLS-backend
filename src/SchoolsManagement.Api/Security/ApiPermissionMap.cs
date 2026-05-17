@@ -31,7 +31,15 @@ public static class ApiPermissionMap
         ("/api/banks", PermissionCatalog.AccountingManagement),
         ("/api/bank-groups", PermissionCatalog.AccountingManagement),
         ("/api/transit-accounts", PermissionCatalog.AccountingManagement),
-        ("/api/sync", PermissionCatalog.SystemBackup),
+        ("/api/sync", PermissionCatalog.ParentAppSync),
+        ("/api/student-payments", PermissionCatalog.Students),
+        ("/api/student-discounts", PermissionCatalog.StudentDiscounts),
+        ("/api/grades", PermissionCatalog.StudentGrades),
+        ("/api/grade-rules", PermissionCatalog.StudentGrades),
+        ("/api/subjects", PermissionCatalog.Classes),
+        ("/api/exams", PermissionCatalog.Classes),
+        ("/api/transfer-approvals", PermissionCatalog.TransferApprovals),
+        ("/api/database-backup", PermissionCatalog.SystemBackup),
     ];
 
     public static bool IsPublicApiPath(string path)

@@ -20,11 +20,20 @@ public class UserPermissionService
     public async Task<bool> IsAdminAsync(ApplicationUser user, CancellationToken ct = default) =>
         await _userManager.IsInRoleAsync(user, "Admin");
 
+    /// <summary>لم يُحفظ له مصفوفة صلاحيات — يُعامل كوصول كامل (بغضّ النظر عن الدور).</summary>
+    public async Task<bool> HasUnrestrictedAccessAsync(ApplicationUser user, CancellationToken ct = default)
+    {
+        var hasMatrix = !string.IsNullOrWhiteSpace(user.PermissionsJson);
+        var storedCount = await _db.UserPagePermissions.AsNoTracking()
+            .CountAsync(x => x.UserId == user.Id, ct);
+        return !hasMatrix && storedCount == 0;
+    }
+
     public async Task<IReadOnlyList<string>> GetEffectivePermissionsAsync(
         ApplicationUser user,
         CancellationToken ct = default)
     {
-        if (await IsAdminAsync(user, ct))
+        if (await HasUnrestrictedAccessAsync(user, ct))
         {
             return PermissionCatalog.AllKeys.ToList();
         }

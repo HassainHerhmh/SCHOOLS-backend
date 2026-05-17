@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -14,13 +15,23 @@ namespace SchoolsManagement.Api.Controllers;
 [Authorize]
 public class PermissionsController : ControllerBase
 {
-    private readonly UserPermissionService _permissions;
-    private readonly UserManager<ApplicationUser> _userManager;
+    private static readonly string[] AllowedRoles = { "Admin", "Teacher", "Staff" };
 
-    public PermissionsController(UserPermissionService permissions, UserManager<ApplicationUser> userManager)
+    private readonly UserPermissionService _permissions;
+    private readonly PermissionMatrixService _matrix;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
+
+    public PermissionsController(
+        UserPermissionService permissions,
+        PermissionMatrixService matrix,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager)
     {
         _permissions = permissions;
+        _matrix = matrix;
         _userManager = userManager;
+        _roleManager = roleManager;
     }
 
     [HttpGet("catalog")]
@@ -43,7 +54,8 @@ public class PermissionsController : ControllerBase
 
         var list = await _permissions.GetEffectivePermissionsAsync(user, ct);
         var isAdmin = await _permissions.IsAdminAsync(user, ct);
-        return Ok(new { permissions = list, is_admin = isAdmin });
+        var fullAccess = await _permissions.HasUnrestrictedAccessAsync(user, ct);
+        return Ok(new { permissions = list, is_admin = isAdmin, full_access = fullAccess });
     }
 
     [HttpGet("users/{userId}")]
@@ -63,12 +75,14 @@ public class PermissionsController : ControllerBase
         var effective = await _permissions.GetEffectivePermissionsAsync(user, ct);
         var stored = await _permissions.GetStoredPermissionsAsync(userId, ct);
         var isAdmin = await _permissions.IsAdminAsync(user, ct);
+        var fullAccess = await _permissions.HasUnrestrictedAccessAsync(user, ct);
         return Ok(new
         {
             user_id = userId,
             user_name = user.UserName,
             full_name = user.FullName,
             is_admin = isAdmin,
+            full_access = fullAccess,
             stored_permissions = stored,
             effective_permissions = effective,
         });
@@ -77,6 +91,107 @@ public class PermissionsController : ControllerBase
     public class SetPermissionsBody
     {
         public List<string> Permissions { get; set; } = [];
+    }
+
+    [HttpGet("users/{userId}/matrix")]
+    public async Task<ActionResult<object>> GetMatrixForUser(string userId, CancellationToken ct)
+    {
+        if (!await CanManagePermissionsAsync(ct))
+        {
+            return Forbid();
+        }
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var isAdmin = await _permissions.IsAdminAsync(user, ct);
+        var fullAccess = await _permissions.HasUnrestrictedAccessAsync(user, ct);
+        var stored = await _permissions.GetStoredPermissionsAsync(userId, ct);
+
+        JsonObject matrix;
+        if (fullAccess)
+        {
+            matrix = _matrix.CreateFullMatrix();
+        }
+        else
+        {
+            var parsed = _matrix.TryParse(user.PermissionsJson);
+            matrix = _matrix.NormalizeMatrix(parsed, stored);
+        }
+
+        return Ok(new
+        {
+            user_id = userId,
+            role = roles.FirstOrDefault() ?? "Staff",
+            is_admin = isAdmin,
+            full_access = fullAccess,
+            permissions = _matrix.ToClientMatrix(matrix),
+        });
+    }
+
+    public class SetMatrixBody
+    {
+        public string? Role { get; set; }
+        public Dictionary<string, Dictionary<string, bool>>? Permissions { get; set; }
+    }
+
+    [HttpPut("users/{userId}/matrix")]
+    public async Task<IActionResult> SetMatrixForUser(string userId, [FromBody] SetMatrixBody body, CancellationToken ct)
+    {
+        if (!await CanManagePermissionsAsync(ct))
+        {
+            return Forbid();
+        }
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        if (!string.IsNullOrWhiteSpace(body.Role))
+        {
+            var role = body.Role.Trim();
+            if (!AllowedRoles.Contains(role))
+            {
+                return BadRequest(new { message = "دور غير مسموح." });
+            }
+
+            var currentRoles = await _userManager.GetRolesAsync(user);
+            if (currentRoles.Count > 0)
+            {
+                await _userManager.RemoveFromRolesAsync(user, currentRoles);
+            }
+
+            if (!await _roleManager.RoleExistsAsync(role))
+            {
+                await _roleManager.CreateAsync(new IdentityRole(role));
+            }
+
+            await _userManager.AddToRoleAsync(user, role);
+        }
+
+        var clientNode = body.Permissions is null
+            ? new JsonObject()
+            : JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(body.Permissions)) as JsonObject
+              ?? new JsonObject();
+        var internalMatrix = _matrix.FromClientMatrix(clientNode);
+        user.PermissionsJson = _matrix.Serialize(internalMatrix);
+        await _userManager.UpdateAsync(user);
+
+        var pageKeys = _matrix.PageKeysFromMatrix(internalMatrix);
+        await _permissions.SetPermissionsAsync(userId, pageKeys, ct);
+
+        return Ok(new
+        {
+            message = "تم حفظ الصلاحيات.",
+            permissions = _matrix.ToClientMatrix(internalMatrix),
+            page_keys = pageKeys,
+        });
     }
 
     [HttpPut("users/{userId}")]
@@ -91,11 +206,6 @@ public class PermissionsController : ControllerBase
         if (user is null)
         {
             return NotFound();
-        }
-
-        if (await _permissions.IsAdminAsync(user, ct))
-        {
-            return BadRequest(new { message = "مستخدم Admin يملك كل الصلاحيات تلقائياً ولا يُعدَّل من هنا." });
         }
 
         await _permissions.SetPermissionsAsync(userId, body.Permissions ?? [], ct);

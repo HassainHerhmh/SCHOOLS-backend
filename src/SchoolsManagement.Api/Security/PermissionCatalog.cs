@@ -26,6 +26,7 @@ public static class PermissionCatalog
     public const string AccountingEmployees = "accounting_employees";
     public const string BusUsers = "bus_users";
     public const string BusSites = "bus_sites";
+    public const string ParentAppSync = "parent_app_sync";
 
     public static IReadOnlyList<PermissionDefinition> All { get; } =
     [
@@ -52,6 +53,7 @@ public static class PermissionCatalog
         new(AccountingEmployees, "رواتب الموظفين", "الموظفين"),
         new(BusUsers, "الباصات — المستخدمون", "الباصات"),
         new(BusSites, "الباصات — إدارة المواقع", "الباصات"),
+        new(ParentAppSync, "مزامنة تطبيق الآباء", "تطبيق الآباء"),
     ];
 
     public static IReadOnlySet<string> AllKeys { get; } =
