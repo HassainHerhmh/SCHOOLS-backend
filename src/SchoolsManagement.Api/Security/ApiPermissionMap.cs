@@ -52,7 +52,9 @@ public static class ApiPermissionMap
         return path.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/api/auth/register", StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith("/api/employees/login", StringComparison.OrdinalIgnoreCase);
+               || path.StartsWith("/api/employees/login", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/api/sync/ingest-parents", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/api/parents/", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>مسارات تتطلب JWT دائماً حتى بدون خريطة صلاحية.</summary>

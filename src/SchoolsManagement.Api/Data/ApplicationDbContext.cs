@@ -47,6 +47,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ExamRecord> Exams => Set<ExamRecord>();
     public DbSet<GradeRuleRecord> GradeRules => Set<GradeRuleRecord>();
     public DbSet<GradeRecord> Grades => Set<GradeRecord>();
+    public DbSet<ParentsStudentSummaryRecord> ParentsStudentSummaries => Set<ParentsStudentSummaryRecord>();
+    public DbSet<ParentsClassPublishRecord> ParentsClassPublishes => Set<ParentsClassPublishRecord>();
+    public DbSet<ParentsSectionPublishRecord> ParentsSectionPublishes => Set<ParentsSectionPublishRecord>();
+    public DbSet<ParentsAttendanceSummaryRecord> ParentsAttendanceSummaries => Set<ParentsAttendanceSummaryRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -131,6 +135,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<GradeRuleRecord>(e =>
         {
             e.HasIndex(x => new { x.ClassId, x.SubjectId }).IsUnique();
+        });
+
+        builder.Entity<ParentsAttendanceSummaryRecord>(e =>
+        {
+            e.HasKey(x => new { x.StudentId, x.Date });
         });
     }
 }

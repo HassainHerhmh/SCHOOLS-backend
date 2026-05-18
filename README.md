@@ -29,7 +29,20 @@ dotnet run
 
 1. اربط المستودع [HassainHerhmh/SCHOOLS-backend](https://github.com/HassainHerhmh/SCHOOLS-backend)
 2. Builder: **Dockerfile** من جذر المستودع
-3. عيّن `ConnectionStrings__DefaultConnection` و`Jwt__SecretKey` و`Jwt__Issuer` و`Jwt__Audience` في متغيرات البيئة
+3. متغيرات البيئة (مهم):
+   - `ConnectionStrings__DefaultConnection` — **SQL Server** (ليس MySQL)
+   - `Jwt__SecretKey` و`Jwt__Issuer` و`Jwt__Audience`
+   - `ParentsRoyal__SyncApiKey` — مفتاح مزامنة تطبيق الآباء (نفس المفتاح على جهاز المدرسة)
+   - `ParentsRoyal__SchoolId` — مثل `al-rowad-schools`
+4. بعد النشر: `GET /api/health` و`POST /api/sync/ingest-parents` (مع هيدر `X-Parents-Sync-Key`)
+
+### مزامنة أولياء الأمور
+
+- **المدرسة المحلية** ترسل: `POST /api/sync/publish-to-parents` (مع `ParentsRoyal:RemoteApiUrl` = عنوان Railway)
+- **سيرفر Railway** يستقبل: `POST /api/sync/ingest-parents`
+- **تطبيق الآباء** يقرأ: `GET /api/parents/students?parent_phone=...`
+
+جداول `parents_*` تُنشأ تلقائياً عند أول استقبال (أو نفّذ `Scripts/royal-ensure-all-tables.sql` على SQL Server).
 
 ## Angular
 

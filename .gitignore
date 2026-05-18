@@ -14,6 +14,8 @@ out/
 
 ## Secrets — لا ترفع أبداً
 appsettings.*.local.json
+appsettings.Secrets.json
+**/Config/مدارس-الرواد-ParentsRoyal-Railway.txt
 **/secrets.json
 
 ## OS

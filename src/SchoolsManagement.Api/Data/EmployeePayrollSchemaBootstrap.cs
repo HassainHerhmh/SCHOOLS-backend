@@ -9,6 +9,8 @@ public static class EmployeePayrollSchemaBootstrap
 {
     public static void EnsureEmployeeChartAccountColumn(ApplicationDbContext db)
     {
+        RepairPartialChartAccountMigration(db);
+
         db.Database.ExecuteSqlRaw(
             """
 IF COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NULL
@@ -24,6 +26,7 @@ IF NOT EXISTS (
     WHERE name = N'IX_employees_chart_account_id_unique'
       AND object_id = OBJECT_ID(N'dbo.employees')
 )
+AND COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NOT NULL
 BEGIN
     CREATE UNIQUE NONCLUSTERED INDEX [IX_employees_chart_account_id_unique]
     ON [dbo].[employees] ([chart_account_id])
@@ -32,6 +35,32 @@ END
 """);
 
         NormalizeEmployeeChartAccountColumnToInt(db);
+        RepairPartialChartAccountMigration(db);
+    }
+
+    /// <summary>إصلاح حالة وسيطة إن فشل تحويل العمود سابقاً.</summary>
+    private static void RepairPartialChartAccountMigration(ApplicationDbContext db)
+    {
+        db.Database.ExecuteSqlRaw(
+            """
+IF COL_LENGTH(N'dbo.employees', N'chart_account_id_tmp') IS NOT NULL
+   AND COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NULL
+BEGIN
+    EXEC sp_rename N'dbo.employees.chart_account_id_tmp', N'chart_account_id', N'COLUMN';
+END
+ELSE IF COL_LENGTH(N'dbo.employees', N'chart_account_id_tmp') IS NOT NULL
+   AND COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NOT NULL
+BEGIN
+    DECLARE @mainType nvarchar(128);
+    SELECT @mainType = DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'employees' AND COLUMN_NAME = N'chart_account_id';
+
+    IF @mainType IN (N'int', N'bigint', N'smallint')
+    BEGIN
+        ALTER TABLE [dbo].[employees] DROP COLUMN [chart_account_id_tmp];
+    END
+END
+""");
     }
 
     /// <summary>
@@ -42,6 +71,7 @@ END
         db.Database.ExecuteSqlRaw(
             """
 IF COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NOT NULL
+   AND COL_LENGTH(N'dbo.employees', N'chart_account_id_tmp') IS NULL
 BEGIN
     DECLARE @empChartType nvarchar(128);
     SELECT @empChartType = DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
@@ -56,16 +86,25 @@ BEGIN
         )
             DROP INDEX [IX_employees_chart_account_id_unique] ON [dbo].[employees];
 
-        ALTER TABLE [dbo].[employees] ADD [chart_account_id_tmp] int NULL;
-        UPDATE [dbo].[employees] SET [chart_account_id_tmp] = TRY_CONVERT(int, [chart_account_id]);
-        ALTER TABLE [dbo].[employees] DROP COLUMN [chart_account_id];
-        EXEC sp_rename N'dbo.employees.chart_account_id_tmp', N'chart_account_id', N'COLUMN';
+        IF COL_LENGTH(N'dbo.employees', N'chart_account_id_tmp') IS NULL
+            ALTER TABLE [dbo].[employees] ADD [chart_account_id_tmp] int NULL;
+
+        UPDATE [dbo].[employees]
+        SET [chart_account_id_tmp] = TRY_CONVERT(int, [chart_account_id]);
+
+        IF COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NOT NULL
+            ALTER TABLE [dbo].[employees] DROP COLUMN [chart_account_id];
+
+        IF COL_LENGTH(N'dbo.employees', N'chart_account_id_tmp') IS NOT NULL
+           AND COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NULL
+            EXEC sp_rename N'dbo.employees.chart_account_id_tmp', N'chart_account_id', N'COLUMN';
 
         IF NOT EXISTS (
             SELECT 1 FROM sys.indexes
             WHERE name = N'IX_employees_chart_account_id_unique'
               AND object_id = OBJECT_ID(N'dbo.employees')
         )
+        AND COL_LENGTH(N'dbo.employees', N'chart_account_id') IS NOT NULL
         BEGIN
             CREATE UNIQUE NONCLUSTERED INDEX [IX_employees_chart_account_id_unique]
             ON [dbo].[employees] ([chart_account_id])

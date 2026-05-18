@@ -13,6 +13,15 @@ using SchoolsManagement.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Configuration.AddJsonFile("appsettings.Secrets.json", optional: true, reloadOnChange: true);
+
+// Railway / Docker: المنفذ من متغير PORT (مثلاً 8080)
+var railwayPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(railwayPort))
+{
+    builder.WebHost.UseUrls($"http://+:{railwayPort}");
+}
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
@@ -62,6 +71,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<UserPermissionService>();
 builder.Services.AddScoped<PermissionMatrixService>();
+builder.Services.AddScoped<ParentsAppIngestService>();
+builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<SalaryJournalMonthEndHostedService>();
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -73,7 +84,10 @@ builder.Services.AddControllers().AddJsonOptions(options =>
     options.JsonSerializerOptions.AllowTrailingCommas = true;
 });
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSwaggerGen();
+}
 
 builder.Services.AddCors(options =>
 {
@@ -257,6 +271,15 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        ParentsAppTablesBootstrap.EnsureExists(db);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "فشل إنشاء جداول نشر بيانات تطبيق أولياء الأمور.");
+    }
+
+    try
+    {
         IdentityDataSeeder.SeedAsync(
                 scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>(),
                 scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>(),
@@ -275,19 +298,49 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    // تسليم العميل / الشبكة المحلية — لا تعرض وثائق Swagger أبداً
+    app.Use(async (context, next) =>
+    {
+        var p = context.Request.Path.Value ?? "";
+        if (p.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        await next();
+    });
+}
 
 // يمنع قطع الوصول من الأجهزة الأخرى عبر الشبكة (HTTP فقط غالبًا)
-if (!app.Environment.IsDevelopment())
+var wwwrootPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+var serveSpa = Directory.Exists(wwwrootPath);
+if (serveSpa)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+else if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
 app.UseCors("LanPolicy");
 app.UseAuthentication();
 app.UseMiddleware<SchoolsManagement.Api.Middleware.ApiPermissionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
-app.MapGet("/", () => Results.Redirect("/swagger"));
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "SchoolsManagement.Api" }));
+
+if (serveSpa)
+{
+    app.MapFallbackToFile("index.html");
+}
+else if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/", () => Results.Redirect("/swagger"));
+}
 
 app.Run();

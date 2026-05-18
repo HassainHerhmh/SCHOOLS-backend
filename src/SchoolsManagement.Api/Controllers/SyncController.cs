@@ -1,11 +1,11 @@
 using System.Collections.Concurrent;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
+using SchoolsManagement.Api.Models.School;
+using SchoolsManagement.Api.Services;
+using ParentsSyncPlan = SchoolsManagement.Api.Services.ParentsRemoteSyncPublisher.ParentsSyncPlan;
 
 namespace SchoolsManagement.Api.Controllers;
 
@@ -23,13 +23,19 @@ public class SyncController : ControllerBase
 
     private readonly ApplicationDbContext _db;
     private readonly IConfiguration _config;
-    private readonly HttpClient _httpClient;
+    private readonly ParentsRemoteSyncPublisher _remotePublisher;
+    private readonly ParentsAppIngestService _ingestService;
 
-    public SyncController(ApplicationDbContext db, IConfiguration config, IHttpClientFactory httpClientFactory)
+    public SyncController(
+        ApplicationDbContext db,
+        IConfiguration config,
+        ParentsRemoteSyncPublisher remotePublisher,
+        ParentsAppIngestService ingestService)
     {
         _db = db;
         _config = config;
-        _httpClient = httpClientFactory.CreateClient();
+        _remotePublisher = remotePublisher;
+        _ingestService = ingestService;
     }
 
     /// <summary>عدد الطلاب النشطين المعروض في واجهة المزامنة (شريط التقدّم).</summary>
@@ -65,25 +71,38 @@ public class SyncController : ControllerBase
         return Ok(progress);
     }
 
+    /// <summary>استقبال البيانات على سيرفر رويال الخارجي (يُستدعى من المدرسة المحلية فقط).</summary>
+    [HttpPost("ingest-parents")]
+    public async Task<IActionResult> IngestParents([FromBody] ParentsSyncIngestPayload payload, CancellationToken cancellationToken)
+    {
+        if (!ValidateParentsSyncKey())
+        {
+            return Unauthorized(new { message = "مفتاح مزامنة رويال غير صالح." });
+        }
+
+        try
+        {
+            var result = await _ingestService.IngestAsync(payload, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "فشل استلام البيانات", error = ex.Message });
+        }
+    }
+
     [HttpPost("publish-to-parents")]
     public async Task<IActionResult> PublishToParents([FromBody] ParentsSyncRequest? request, CancellationToken cancellationToken)
     {
         var sessionId = string.IsNullOrWhiteSpace(request?.SessionId) ? Guid.NewGuid().ToString("N") : request.SessionId.Trim();
-        var supabaseUrl = _config["Supabase:Url"];
-        var supabaseKey = _config["Supabase:ServiceRoleKey"];
 
-        if (string.IsNullOrWhiteSpace(supabaseUrl) || string.IsNullOrWhiteSpace(supabaseKey) || supabaseUrl.Contains("YOUR_SUPABASE"))
+        if (!_remotePublisher.IsConfigured())
         {
-            SetProgress(sessionId, 0, 0, "failed", "لم يتم إعداد مفاتيح Supabase في ملف appsettings.json بشكل صحيح.", true, true);
-            return BadRequest(new { message = "لم يتم إعداد مفاتيح Supabase في ملف appsettings.json بشكل صحيح.", session_id = sessionId });
+            const string configMsg =
+                "لم يُضبط سيرفر رويال الخارجي. أضف ParentsRoyal:RemoteApiUrl و ParentsRoyal:SyncApiKey في appsettings.Secrets.json على جهاز المدرسة.";
+            SetProgress(sessionId, 0, 0, "failed", configMsg, true, true);
+            return BadRequest(new { message = configMsg, session_id = sessionId });
         }
-
-        // إعداد الهيدر للاتصال بـ Supabase
-        _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("apikey", supabaseKey);
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", supabaseKey);
-        // لعمل Upsert (تحديث إذا كان موجوداً وإضافة إذا لم يكن)
-        _httpClient.DefaultRequestHeaders.Add("Prefer", "resolution=merge-duplicates");
 
         try
         {
@@ -95,197 +114,26 @@ public class SyncController : ControllerBase
                 return Ok(new { message = "لا توجد تعديلات جديدة للمزامنة.", count = 0, session_id = sessionId });
             }
 
-            // 1. جلب بيانات الطلاب من قاعدة البيانات المحلية عند الحاجة فقط
-            var studentQuery = _db.StudentRecords.Where(s => s.Status == "active");
-            if (plan.StudentsSince is not null)
-            {
-                studentQuery = studentQuery.Where(s => (s.UpdatedAt ?? s.CreatedAt ?? DateTimeOffset.MinValue) > plan.StudentsSince.Value);
-            }
-
-            var students = plan.SyncStudents
-                ? await studentQuery
-                .Where(s => s.Status == "active") // مزامنة الطلاب النشطين فقط
-                .Select(s => new
-                {
-                    id = s.Id,
-                    parent_phone = s.ParentPhone ?? s.Phone,
-                    email = s.Email, // إضافة البريد الإلكتروني هنا
-                    name = s.Name,
-                    level = s.Level,
-                    section = s.Section,
-                    paid_amount = s.PaidAmount,
-                    school_fees = s.SchoolFees,
-                    uniform_fees = s.UniformFees,
-                    bus_fees = s.BusFees
-                })
-                .ToListAsync(cancellationToken)
-                : [];
-
-            var endpoint = $"{supabaseUrl.TrimEnd('/')}/rest/v1/students_summary?on_conflict=id";
             var totalItems = Math.Max(1, plan.TotalItems);
-            var uploadedItems = 0;
+            SetProgress(sessionId, totalItems, 0, "uploading", "جاري الرفع إلى سيرفر رويال الخارجي", itemLabel: plan.ItemLabel);
 
-            if (plan.SyncStudents)
-            {
-                SetProgress(sessionId, totalItems, uploadedItems, "uploading_students", "جاري رفع بيانات الطلاب", itemLabel: plan.ItemLabel);
-
-                for (var i = 0; i < students.Count; i++)
+            await _remotePublisher.PublishAsync(
+                plan,
+                (uploaded, total, message) =>
                 {
-                    var jsonPayload = JsonSerializer.Serialize(new[] { students[i] });
-                    var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                    var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errorResponse = await response.Content.ReadAsStringAsync(cancellationToken);
-                        SetProgress(sessionId, totalItems, uploadedItems, "failed", "فشل الرفع إلى Supabase", true, true, errorResponse, plan.ItemLabel);
-                        return StatusCode((int)response.StatusCode, new { message = "فشل الرفع إلى Supabase", details = errorResponse, session_id = sessionId });
-                    }
-
-                    uploadedItems++;
-                    SetProgress(sessionId, totalItems, uploadedItems, "uploading_students", $"تم رفع {uploadedItems} من {totalItems} {plan.ItemLabel}", itemLabel: plan.ItemLabel);
-                }
-            }
-
-            // 3. مزامنة الصفوف (classes)
-            if (plan.SyncClasses)
-            {
-                SetProgress(sessionId, totalItems, uploadedItems, "syncing_classes", "جاري تحديث بيانات الصفوف", itemLabel: plan.ItemLabel);
-                var classQuery = _db.GradeClasses.AsQueryable();
-                if (plan.ClassesSince is not null)
-                {
-                    classQuery = classQuery.Where(c => (c.UpdatedAt ?? c.CreatedAt ?? DateTimeOffset.MinValue) > plan.ClassesSince.Value);
-                }
-
-                var classes = await classQuery
-                .Select(c => new
-                {
-                    id = c.Id,
-                    name = c.Name,
-                    level = c.Level,
-                    display_order = c.DisplayOrder,
-                    tuition_fees = c.TuitionFees,
-                    uniform_fees = c.UniformFees,
-                    bus_fees = c.BusFees
-                })
-                .ToListAsync(cancellationToken);
-
-                if (classes.Any())
-                {
-                    var classPayload = JsonSerializer.Serialize(classes);
-                    var classContent = new StringContent(classPayload, Encoding.UTF8, "application/json");
-                    var classEndpoint = $"{supabaseUrl.TrimEnd('/')}/rest/v1/classes?on_conflict=id";
-                    var classResponse = await _httpClient.PostAsync(classEndpoint, classContent, cancellationToken);
-
-                    if (!classResponse.IsSuccessStatusCode)
-                    {
-                        var errorResponse = await classResponse.Content.ReadAsStringAsync(cancellationToken);
-                        SetProgress(sessionId, totalItems, uploadedItems, "failed", "فشل رفع بيانات الصفوف إلى Supabase", true, true, errorResponse, plan.ItemLabel);
-                        return StatusCode((int)classResponse.StatusCode, new { message = "فشل رفع بيانات الصفوف إلى Supabase", details = errorResponse, session_id = sessionId });
-                    }
-
-                    uploadedItems += plan.ChangedClasses;
-                    SetProgress(sessionId, totalItems, uploadedItems, "syncing_classes", $"تم تحديث الصفوف", itemLabel: plan.ItemLabel);
-                }
-            }
-
-            // 3.5. مزامنة الشُعب (sections)
-            if (plan.SyncSections)
-            {
-                SetProgress(sessionId, totalItems, uploadedItems, "syncing_sections", "جاري تحديث بيانات الشعب", itemLabel: plan.ItemLabel);
-                var sectionQuery = _db.SchoolSections.AsQueryable();
-                if (plan.SectionsSince is not null)
-                {
-                    sectionQuery = sectionQuery.Where(s => (s.UpdatedAt ?? s.CreatedAt ?? DateTimeOffset.MinValue) > plan.SectionsSince.Value);
-                }
-
-                var sections = await sectionQuery
-                .Select(s => new
-                {
-                    id = s.Id,
-                    name = s.Name,
-                    class_id = s.ClassId,
-                    teacher_id = s.TeacherId,
-                    teacher_name = s.TeacherName
-                })
-                .ToListAsync(cancellationToken);
-
-                if (sections.Any())
-                {
-                    var sectionPayload = JsonSerializer.Serialize(sections);
-                    var sectionContent = new StringContent(sectionPayload, Encoding.UTF8, "application/json");
-                    var sectionEndpoint = $"{supabaseUrl.TrimEnd('/')}/rest/v1/sections?on_conflict=id";
-                    var sectionResponse = await _httpClient.PostAsync(sectionEndpoint, sectionContent, cancellationToken);
-
-                    if (!sectionResponse.IsSuccessStatusCode)
-                    {
-                        var errorResponse = await sectionResponse.Content.ReadAsStringAsync(cancellationToken);
-                        SetProgress(sessionId, totalItems, uploadedItems, "failed", "فشل رفع بيانات الشعب إلى Supabase", true, true, errorResponse, plan.ItemLabel);
-                        return StatusCode((int)sectionResponse.StatusCode, new { message = "فشل رفع بيانات الشعب إلى Supabase", details = errorResponse, session_id = sessionId });
-                    }
-
-                    uploadedItems += plan.ChangedSections;
-                    SetProgress(sessionId, totalItems, uploadedItems, "syncing_sections", "تم تحديث الشعب", itemLabel: plan.ItemLabel);
-                }
-            }
-
-            // 4. مزامنة الحضور (attendance_summary) للطلاب النشطين فقط
-            if (plan.SyncAttendance)
-            {
-                SetProgress(sessionId, totalItems, uploadedItems, "syncing_attendance", "جاري تحديث بيانات الحضور", itemLabel: plan.ItemLabel);
-                var activeStudentIds = await _db.StudentRecords
-                    .Where(s => s.Status == "active")
-                    .Select(s => s.Id)
-                    .ToListAsync(cancellationToken);
-
-                var attendanceQuery = _db.AttendanceRecords
-                    .Where(a => activeStudentIds.Contains(a.StudentId));
-
-                if (plan.AttendanceSince is not null)
-                {
-                    attendanceQuery = attendanceQuery.Where(a => a.CreatedAt > plan.AttendanceSince.Value);
-                }
-
-                var attendanceRecords = await attendanceQuery
-                .Select(a => new
-                {
-                    student_id = a.StudentId,
-                    date = a.Date.ToString("yyyy-MM-dd"),
-                    status = a.Status
-                })
-                .ToListAsync(cancellationToken);
-
-                if (attendanceRecords.Any())
-                {
-                    var attEndpoint = $"{supabaseUrl.TrimEnd('/')}/rest/v1/attendance_summary?on_conflict=student_id,date";
-
-                    foreach (var attendanceRecord in attendanceRecords)
-                    {
-                        var attendancePayload = JsonSerializer.Serialize(new[] { attendanceRecord });
-                        var attendanceContent = new StringContent(attendancePayload, Encoding.UTF8, "application/json");
-                        var attResponse = await _httpClient.PostAsync(attEndpoint, attendanceContent, cancellationToken);
-
-                        if (!attResponse.IsSuccessStatusCode)
-                        {
-                            var errorResponse = await attResponse.Content.ReadAsStringAsync(cancellationToken);
-                            SetProgress(sessionId, totalItems, uploadedItems, "failed", "فشل رفع بيانات الحضور إلى Supabase", true, true, errorResponse, plan.ItemLabel);
-                            return StatusCode((int)attResponse.StatusCode, new { message = "فشل رفع بيانات الحضور إلى Supabase", details = errorResponse, session_id = sessionId });
-                        }
-
-                        uploadedItems++;
-                        SetProgress(sessionId, totalItems, uploadedItems, "syncing_attendance", $"تم رفع {uploadedItems} من {totalItems} {plan.ItemLabel}", itemLabel: plan.ItemLabel);
-                    }
-                }
-            }
+                    SetProgress(sessionId, total, uploaded, "uploading", message, itemLabel: plan.ItemLabel);
+                },
+                cancellationToken);
 
             await SaveSuccessfulCheckpoints(plan, cancellationToken);
 
-            SetProgress(sessionId, totalItems, totalItems, "completed", "اكتملت المزامنة", true, itemLabel: plan.ItemLabel);
+            SetProgress(sessionId, totalItems, totalItems, "completed", "اكتمل الرفع إلى سيرفر رويال", true, itemLabel: plan.ItemLabel);
             return Ok(new
             {
-                message = "تمت مزامنة بيانات الطلاب والحضور بنجاح!",
+                message = "تم رفع بيانات تطبيق أولياء الأمور إلى سيرفر رويال الخارجي بنجاح.",
                 count = totalItems,
-                session_id = sessionId
+                session_id = sessionId,
+                remote_url = _remotePublisher.GetRemoteSettings().RemoteUrl
             });
         }
         catch (Exception ex)
@@ -293,6 +141,18 @@ public class SyncController : ControllerBase
             SetProgress(sessionId, 0, 0, "failed", "حدث خطأ أثناء المزامنة", true, true, ex.Message);
             return StatusCode(500, new { message = "حدث خطأ أثناء المزامنة", error = ex.Message, session_id = sessionId });
         }
+    }
+
+    private bool ValidateParentsSyncKey()
+    {
+        var expected = _config["ParentsRoyal:SyncApiKey"]?.Trim();
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return false;
+        }
+
+        var provided = Request.Headers["X-Parents-Sync-Key"].FirstOrDefault()?.Trim();
+        return string.Equals(expected, provided, StringComparison.Ordinal);
     }
 
     private static void SetProgress(
@@ -482,23 +342,4 @@ END
             cancellationToken);
     }
 
-    private sealed class ParentsSyncPlan
-    {
-        public int ChangedStudents { get; set; }
-        public int ChangedClasses { get; set; }
-        public int ChangedSections { get; set; }
-        public int ChangedAttendance { get; set; }
-        public bool SyncStudents { get; set; }
-        public bool SyncClasses { get; set; }
-        public bool SyncSections { get; set; }
-        public bool SyncAttendance { get; set; }
-        public int TotalItems { get; set; }
-        public string ItemLabel { get; set; } = "عنصر";
-        public DateTimeOffset? AttendanceSince { get; set; }
-        public DateTimeOffset? StudentsSince { get; set; }
-        public DateTimeOffset? ClassesSince { get; set; }
-        public DateTimeOffset? SectionsSince { get; set; }
-        public DateTimeOffset CheckpointAt { get; set; }
-        public bool HasChanges => TotalItems > 0;
-    }
 }
