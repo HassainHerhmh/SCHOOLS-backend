@@ -73,16 +73,25 @@ public class ParentsRemoteSyncPublisher
             for (var i = 0; i < students.Count; i += chunkSize)
             {
                 var chunk = students.Skip(i).Take(chunkSize).ToList();
+                var reportChunk = await LoadStudentReportsAsync(plan, chunk.Select(s => s.Id).ToList(), cancellationToken);
                 var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
                 {
                     SchoolId = schoolId,
-                    Students = chunk
+                    Students = chunk,
+                    StudentReports = reportChunk
                 }, cancellationToken);
                 aggregate.Students += result.Students;
+                aggregate.StudentReports += result.StudentReports;
                 if (chunk.Count > 0 && result.Students <= 0)
                 {
                     throw new InvalidOperationException(
                         $"سيرفر رويال لم يحفظ دفعة الطلاب ({chunk.Count} سجل) — تحقق من جدول parents_students_summary على MySQL.");
+                }
+
+                if (reportChunk.Count > 0 && result.StudentReports <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"سيرفر رويال لم يحفظ تقارير الطلاب ({reportChunk.Count} سجل) — تحقق من جدول parents_student_reports على MySQL.");
                 }
 
                 uploadedItems += chunk.Count;
@@ -211,6 +220,31 @@ public class ParentsRemoteSyncPublisher
 
         var result = JsonSerializer.Deserialize<ParentsIngestResult>(body, JsonOptions);
         return result ?? new ParentsIngestResult();
+    }
+
+    private async Task<List<ParentsStudentReportIngestDto>> LoadStudentReportsAsync(
+        ParentsSyncPlan plan,
+        IReadOnlyList<Guid> studentIds,
+        CancellationToken ct)
+    {
+        if (studentIds.Count == 0)
+        {
+            return [];
+        }
+
+        var students = await _db.StudentRecords
+            .Where(s => s.Status == "active" && studentIds.Contains(s.Id))
+            .ToListAsync(ct);
+
+        var discounts = await _db.StudentDiscountApplications
+            .Where(a => studentIds.Contains(a.StudentId))
+            .GroupBy(a => a.StudentId)
+            .Select(g => new { StudentId = g.Key, Total = g.Sum(a => a.Amount) })
+            .ToDictionaryAsync(x => x.StudentId, x => x.Total, ct);
+
+        return students
+            .Select(s => ParentsStudentReportCalculator.FromStudent(s, discounts.GetValueOrDefault(s.Id)))
+            .ToList();
     }
 
     private async Task<List<ParentsStudentIngestDto>> LoadStudentsAsync(ParentsSyncPlan plan, CancellationToken ct)
@@ -366,6 +400,8 @@ public class ParentsRemoteSyncPublisher
         public bool SyncClasses { get; set; }
         public bool SyncSections { get; set; }
         public bool SyncAttendance { get; set; }
+        public bool SyncStudentReports { get; set; }
+        public int ChangedStudentReports { get; set; }
         public int TotalItems { get; set; }
         public string ItemLabel { get; set; } = "عنصر";
         public DateTimeOffset? AttendanceSince { get; set; }

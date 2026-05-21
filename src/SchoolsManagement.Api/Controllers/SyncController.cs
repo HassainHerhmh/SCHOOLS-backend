@@ -91,7 +91,8 @@ public class SyncController : ControllerBase
                 Students = await _db.ParentsStudentSummaries.CountAsync(cancellationToken),
                 Classes = await _db.ParentsClassPublishes.CountAsync(cancellationToken),
                 Sections = await _db.ParentsSectionPublishes.CountAsync(cancellationToken),
-                Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken)
+                Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken),
+                StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken)
             };
             return Ok(counts);
         }
@@ -387,6 +388,8 @@ public class SyncController : ControllerBase
             SyncClasses = syncClasses,
             SyncSections = syncSections,
             SyncAttendance = syncAttendance,
+            SyncStudentReports = syncStudents,
+            ChangedStudentReports = changedStudents,
             TotalItems = totalItems,
             ItemLabel = itemLabel,
             AttendanceSince = hasAttendanceCheckpoint ? attendanceSince : null,

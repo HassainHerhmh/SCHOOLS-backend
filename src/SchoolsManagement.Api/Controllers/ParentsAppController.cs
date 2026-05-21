@@ -33,6 +33,25 @@ public class ParentsAppController : ControllerBase
         return Ok(list);
     }
 
+    /// <summary>تقرير مديونيات الطلاب لولي الأمر (المستحق، المدفوع، الخصم، المتبقي).</summary>
+    [HttpGet("student-reports")]
+    public async Task<IActionResult> StudentReportsByParentPhone([FromQuery] string parent_phone, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(parent_phone))
+        {
+            return BadRequest(new { message = "رقم ولي الأمر مطلوب." });
+        }
+
+        var phone = parent_phone.Trim();
+        var list = await _db.ParentsStudentReports
+            .AsNoTracking()
+            .Where(r => r.ParentPhone == phone)
+            .OrderBy(r => r.Name)
+            .ToListAsync(ct);
+
+        return Ok(list);
+    }
+
     [HttpGet("classes")]
     public async Task<IActionResult> Classes(CancellationToken ct)
     {

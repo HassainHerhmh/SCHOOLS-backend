@@ -51,6 +51,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ParentsClassPublishRecord> ParentsClassPublishes => Set<ParentsClassPublishRecord>();
     public DbSet<ParentsSectionPublishRecord> ParentsSectionPublishes => Set<ParentsSectionPublishRecord>();
     public DbSet<ParentsAttendanceSummaryRecord> ParentsAttendanceSummaries => Set<ParentsAttendanceSummaryRecord>();
+    public DbSet<ParentsStudentReportRecord> ParentsStudentReports => Set<ParentsStudentReportRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

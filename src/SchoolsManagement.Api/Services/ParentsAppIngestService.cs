@@ -45,6 +45,40 @@ public class ParentsAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (payload.StudentReports is { Count: > 0 })
+        {
+            foreach (var r in payload.StudentReports)
+            {
+                var row = await _db.ParentsStudentReports.FirstOrDefaultAsync(x => x.StudentId == r.StudentId, cancellationToken);
+                if (row is null)
+                {
+                    row = new ParentsStudentReportRecord { StudentId = r.StudentId };
+                    _db.ParentsStudentReports.Add(row);
+                }
+
+                row.ParentPhone = r.ParentPhone;
+                row.Name = r.Name;
+                row.Level = r.Level;
+                row.Section = r.Section;
+                row.SchoolFees = r.SchoolFees;
+                row.UniformFees = r.UniformFees;
+                row.BooksFees = r.BooksFees;
+                row.BusFees = r.BusFees;
+                row.PaidSchoolFees = r.PaidSchoolFees;
+                row.PaidUniformFees = r.PaidUniformFees;
+                row.PaidBooksFees = r.PaidBooksFees;
+                row.PaidBusFees = r.PaidBusFees;
+                row.TotalAmount = r.TotalAmount;
+                row.PaidCashAmount = r.PaidCashAmount;
+                row.DiscountAmount = r.DiscountAmount;
+                row.RemainingAmount = r.RemainingAmount;
+                row.SyncedAt = syncedAt;
+                result.StudentReports++;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         if (payload.Classes is { Count: > 0 })
         {
             foreach (var c in payload.Classes)

@@ -26,6 +26,7 @@ public sealed class DatabaseHealthChecker
     private static readonly string[] MySqlRoyalKeyTables =
     [
         "parents_students_summary",
+        "parents_student_reports",
         "parents_classes",
         "parents_sections",
         "parents_attendance_summary"

@@ -69,6 +69,18 @@ public static class ParentsSyncVerification
             }
         }
 
+        if (plan.SyncStudentReports && plan.ChangedStudentReports > 0)
+        {
+            if (uploaded.StudentReports <= 0)
+            {
+                issues.Add($"لم يُحفظ أي تقرير طالب من أصل {plan.ChangedStudentReports}.");
+            }
+            else if (remote?.StudentReports <= 0)
+            {
+                issues.Add("جدول تقارير الطلاب على رويال فارغ بعد الرفع.");
+            }
+        }
+
         if (issues.Count > 0)
         {
             return new ParentsPublishOutcome
@@ -102,6 +114,11 @@ public static class ParentsSyncVerification
             parts.Add($"{uploaded.Attendance} حضور");
         }
 
+        if (uploaded.StudentReports > 0)
+        {
+            parts.Add($"{uploaded.StudentReports} تقرير");
+        }
+
         var detail = parts.Count > 0 ? string.Join("، ", parts) : $"{plan.TotalItems} عنصر";
         return new ParentsPublishOutcome
         {
@@ -111,5 +128,6 @@ public static class ParentsSyncVerification
             Remote = remote
         };
     }
-}
-
+}
+
+
