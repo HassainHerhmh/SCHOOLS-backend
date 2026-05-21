@@ -41,15 +41,6 @@ else if (!databaseConfigured)
 {
     sqlConnectionString = ConnectionStringResolver.Resolve(builder.Configuration);
 }
-else if (ConnectionStringResolver.IsRailwayHost()
-         && ConnectionStringResolver.LooksLikeLocalSql(sqlConnectionString))
-{
-    throw new InvalidOperationException(
-        """
-        Railway: لا يمكن استخدام localhost\SQLEXPRESS على السحابة.
-        عيّن ConnectionStrings__DefaultConnection لـ Azure SQL أو SQL Server سحابي.
-        """);
-}
 else if (ConnectionStringResolver.LooksLikeMySql(sqlConnectionString))
 {
     throw new InvalidOperationException(

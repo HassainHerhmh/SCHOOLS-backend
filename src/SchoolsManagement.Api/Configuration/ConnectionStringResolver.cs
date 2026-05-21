@@ -5,12 +5,20 @@ public static class ConnectionStringResolver
 {
     public static string? TryResolve(IConfiguration configuration)
     {
-        foreach (var cs in EnumerateCandidates(configuration))
+        foreach (var cs in EnumerateCandidates(configuration, cloudOnly: IsRailwayHost()))
         {
-            if (!string.IsNullOrWhiteSpace(cs))
+            if (string.IsNullOrWhiteSpace(cs))
             {
-                return cs.Trim();
+                continue;
             }
+
+            var trimmed = cs.Trim();
+            if (IsRailwayHost() && LooksLikeLocalSql(trimmed))
+            {
+                continue;
+            }
+
+            return trimmed;
         }
 
         return null;
@@ -22,14 +30,23 @@ public static class ConnectionStringResolver
                ?? throw new InvalidOperationException(BuildMissingConnectionMessage());
     }
 
-    public static IEnumerable<string?> EnumerateCandidates(IConfiguration configuration)
+    public static IEnumerable<string?> EnumerateCandidates(IConfiguration configuration, bool cloudOnly = false)
     {
-        yield return configuration.GetConnectionString("DefaultConnection");
+        if (!cloudOnly)
+        {
+            yield return configuration.GetConnectionString("DefaultConnection");
+        }
+
         yield return Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
         yield return Environment.GetEnvironmentVariable("SQLSERVER_CONNECTION_STRING");
         yield return Environment.GetEnvironmentVariable("CUSTOMCONNSTR_DefaultConnection");
         yield return Environment.GetEnvironmentVariable("DATABASE_URL");
         yield return BuildFromSqlServerParts();
+
+        if (cloudOnly)
+        {
+            yield return configuration.GetConnectionString("DefaultConnection");
+        }
     }
 
     private static string? BuildFromSqlServerParts()
@@ -83,6 +100,9 @@ public static class ConnectionStringResolver
             hints.Add("وُجد MYSQL_PUBLIC_URL على Railway — لا يصلح لهذا API.");
             hints.Add("أنشئ Azure SQL (أو SQL Server) واربط ConnectionStrings__DefaultConnection به.");
         }
+
+        hints.Add("");
+        hints.Add("تجاهل localhost\\SQLEXPRESS من appsettings على السحابة — يجب متغير ConnectionStrings__DefaultConnection لـ SQL سحابي.");
 
         if (IsRailwayHost())
         {
