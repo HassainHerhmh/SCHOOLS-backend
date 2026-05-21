@@ -13,7 +13,7 @@ public class ParentsAppIngestService
 
     public async Task<ParentsIngestResult> IngestAsync(ParentsSyncIngestPayload payload, CancellationToken cancellationToken = default)
     {
-        ParentsAppTablesBootstrap.EnsureExists(_db);
+        await ParentsAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
         var syncedAt = DateTimeOffset.UtcNow;
         var result = new ParentsIngestResult();
 

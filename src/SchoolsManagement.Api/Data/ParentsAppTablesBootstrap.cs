@@ -1,11 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using SchoolsManagement.Api.Configuration;
 
 namespace SchoolsManagement.Api.Data;
 
-/// <summary>جداول نشر بيانات تطبيق أولياء الأمور على SQL Server (رويال) بدل Supabase.</summary>
+/// <summary>جداول نشر بيانات تطبيق أولياء الأمور — SQL Server فقط؛ MySQL تُنشأ عبر EF EnsureCreated.</summary>
 public static class ParentsAppTablesBootstrap
 {
-    private const string Sql = """
+    private const string SqlServerSql = """
 IF OBJECT_ID(N'dbo.parents_students_summary', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.parents_students_summary (
@@ -63,5 +64,35 @@ BEGIN
 END
 """;
 
-    public static void EnsureExists(ApplicationDbContext db) => db.Database.ExecuteSqlRaw(Sql);
+    public static void EnsureExists(ApplicationDbContext db)
+    {
+        if (DatabaseProviderHelper.IsMySql(db))
+        {
+            return;
+        }
+
+        db.Database.ExecuteSqlRaw(SqlServerSql);
+    }
+
+    public static async Task EnsureExistsAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
+    {
+        if (!DatabaseProviderHelper.IsMySql(db))
+        {
+            EnsureExists(db);
+            return;
+        }
+
+        var parentsTableExists = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS `Value`
+                FROM information_schema.tables
+                WHERE table_schema = DATABASE() AND table_name = 'parents_students_summary'
+                """)
+            .FirstOrDefaultAsync(cancellationToken) > 0;
+
+        if (!parentsTableExists)
+        {
+            await db.Database.EnsureCreatedAsync(cancellationToken);
+        }
+    }
 }
