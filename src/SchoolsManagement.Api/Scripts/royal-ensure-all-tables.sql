@@ -602,6 +602,7 @@ BEGIN
         school_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_students_school DEFAULT ((0)),
         uniform_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_students_uniform DEFAULT ((0)),
         bus_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_students_bus DEFAULT ((0)),
+        books_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_students_books DEFAULT ((0)),
         synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_students_synced DEFAULT (sysdatetimeoffset())
     );
     CREATE INDEX IX_parents_students_parent_phone ON dbo.parents_students_summary(parent_phone);
@@ -617,6 +618,7 @@ BEGIN
         tuition_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_classes_tuition DEFAULT ((0)),
         uniform_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_classes_uniform DEFAULT ((0)),
         bus_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_classes_bus DEFAULT ((0)),
+        books_fees decimal(18,2) NOT NULL CONSTRAINT DF_parents_classes_books DEFAULT ((0)),
         synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_classes_synced DEFAULT (sysdatetimeoffset())
     );
 END;

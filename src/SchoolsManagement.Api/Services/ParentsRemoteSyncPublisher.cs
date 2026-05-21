@@ -234,7 +234,8 @@ public class ParentsRemoteSyncPublisher
                 PaidAmount = s.PaidAmount,
                 SchoolFees = s.SchoolFees,
                 UniformFees = s.UniformFees,
-                BusFees = s.BusFees
+                BusFees = s.BusFees,
+                BooksFees = s.BooksFees
             })
             .ToListAsync(ct);
     }
@@ -257,7 +258,8 @@ public class ParentsRemoteSyncPublisher
                 DisplayOrder = c.DisplayOrder,
                 TuitionFees = c.TuitionFees,
                 UniformFees = c.UniformFees,
-                BusFees = c.BusFees
+                BusFees = c.BusFees,
+                BooksFees = c.BooksFees
             })
             .ToListAsync(ct);
     }

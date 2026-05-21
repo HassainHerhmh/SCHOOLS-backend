@@ -37,6 +37,7 @@ public class ParentsAppIngestService
                 row.SchoolFees = s.SchoolFees;
                 row.UniformFees = s.UniformFees;
                 row.BusFees = s.BusFees;
+                row.BooksFees = s.BooksFees;
                 row.SyncedAt = syncedAt;
                 result.Students++;
             }
@@ -61,6 +62,7 @@ public class ParentsAppIngestService
                 row.TuitionFees = c.TuitionFees;
                 row.UniformFees = c.UniformFees;
                 row.BusFees = c.BusFees;
+                row.BooksFees = c.BooksFees;
                 row.SyncedAt = syncedAt;
                 result.Classes++;
             }

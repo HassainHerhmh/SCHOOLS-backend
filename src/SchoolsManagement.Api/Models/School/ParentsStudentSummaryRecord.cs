@@ -38,6 +38,9 @@ public class ParentsStudentSummaryRecord
     [Column("bus_fees", TypeName = "decimal(18,2)")]
     public decimal BusFees { get; set; }
 
+    [Column("books_fees", TypeName = "decimal(18,2)")]
+    public decimal BooksFees { get; set; }
+
     [Column("synced_at")]
     public DateTimeOffset SyncedAt { get; set; }
 }

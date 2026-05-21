@@ -21,6 +21,7 @@ public class ParentsStudentIngestDto
     public decimal SchoolFees { get; set; }
     public decimal UniformFees { get; set; }
     public decimal BusFees { get; set; }
+    public decimal BooksFees { get; set; }
 }
 
 public class ParentsClassIngestDto
@@ -32,6 +33,7 @@ public class ParentsClassIngestDto
     public decimal TuitionFees { get; set; }
     public decimal UniformFees { get; set; }
     public decimal BusFees { get; set; }
+    public decimal BooksFees { get; set; }
 }
 
 public class ParentsSectionIngestDto
