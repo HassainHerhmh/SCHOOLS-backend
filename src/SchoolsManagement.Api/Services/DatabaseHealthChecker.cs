@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Configuration;
 using SchoolsManagement.Api.Data;
 
+#pragma warning disable EF1002
+
 namespace SchoolsManagement.Api.Services;
 
 public sealed class DatabaseHealthChecker
@@ -26,26 +28,17 @@ public sealed class DatabaseHealthChecker
         string connectionString,
         CancellationToken cancellationToken = default)
     {
+        var isMySql = DatabaseProviderHelper.IsMySql(db);
         var report = new DatabaseHealthReport
         {
-            Provider = "Microsoft.EntityFrameworkCore.SqlServer",
+            Provider = db.Database.ProviderName ?? "unknown",
             ConnectionSummary = ConnectionStringResolver.RedactForDisplay(connectionString),
             EnvironmentHints = CollectEnvironmentHints()
         };
 
-        if (ConnectionStringResolver.LooksLikeMySql(connectionString))
+        if (isMySql && ConnectionStringResolver.HasMysqlEnvVars())
         {
-            report.Warnings.Add(
-                "سلسلة الاتصال تشبه MySQL — هذا المشروع يحتاج SQL Server فقط (ليس MYSQL_PUBLIC_URL).");
-        }
-
-        foreach (var hint in report.EnvironmentHints)
-        {
-            if (hint.Contains("MYSQL", StringComparison.OrdinalIgnoreCase))
-            {
-                report.Warnings.Add(
-                    "وُجد متغير MySQL على Railway — احذفه أو لا تستخدمه. أضف SQL Server و ConnectionStrings__DefaultConnection.");
-            }
+            report.Warnings.Add("Railway MySQL — الجداول تُنشأ تلقائياً عند أول تشغيل (EnsureCreated).");
         }
 
         try
@@ -69,26 +62,47 @@ public sealed class DatabaseHealthChecker
 
         try
         {
-            report.DatabaseName = await db.Database.SqlQueryRaw<string>(
-                    "SELECT DB_NAME() AS [Value]")
-                .FirstOrDefaultAsync(cancellationToken) ?? "";
-
-            report.ServerName = await db.Database.SqlQueryRaw<string>(
-                    "SELECT @@SERVERNAME AS [Value]")
-                .FirstOrDefaultAsync(cancellationToken) ?? "";
-
-            report.TableCount = await db.Database.SqlQueryRaw<int>(
-                    "SELECT COUNT(*) AS [Value] FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = N'BASE TABLE'")
-                .FirstOrDefaultAsync(cancellationToken);
-
-            var tables = await db.Database.SqlQueryRaw<TableRow>(
-                    """
-                    SELECT TABLE_SCHEMA AS [Schema], TABLE_NAME AS [Name]
-                    FROM INFORMATION_SCHEMA.TABLES
-                    WHERE TABLE_TYPE = N'BASE TABLE'
-                    ORDER BY TABLE_NAME
-                    """)
-                .ToListAsync(cancellationToken);
+            List<TableRow> tables;
+            if (isMySql)
+            {
+                report.DatabaseName = await db.Database.SqlQueryRaw<string>(
+                        "SELECT DATABASE() AS `Value`")
+                    .FirstOrDefaultAsync(cancellationToken) ?? "";
+                report.ServerName = await db.Database.SqlQueryRaw<string>(
+                        "SELECT @@hostname AS `Value`")
+                    .FirstOrDefaultAsync(cancellationToken) ?? "";
+                report.TableCount = await db.Database.SqlQueryRaw<int>(
+                        "SELECT COUNT(*) AS `Value` FROM information_schema.tables WHERE table_schema = DATABASE()")
+                    .FirstOrDefaultAsync(cancellationToken);
+                tables = await db.Database.SqlQueryRaw<TableRow>(
+                        """
+                        SELECT table_schema AS `Schema`, table_name AS `Name`
+                        FROM information_schema.tables
+                        WHERE table_schema = DATABASE()
+                        ORDER BY table_name
+                        """)
+                    .ToListAsync(cancellationToken);
+            }
+            else
+            {
+                report.DatabaseName = await db.Database.SqlQueryRaw<string>(
+                        "SELECT DB_NAME() AS [Value]")
+                    .FirstOrDefaultAsync(cancellationToken) ?? "";
+                report.ServerName = await db.Database.SqlQueryRaw<string>(
+                        "SELECT @@SERVERNAME AS [Value]")
+                    .FirstOrDefaultAsync(cancellationToken) ?? "";
+                report.TableCount = await db.Database.SqlQueryRaw<int>(
+                        "SELECT COUNT(*) AS [Value] FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = N'BASE TABLE'")
+                    .FirstOrDefaultAsync(cancellationToken);
+                tables = await db.Database.SqlQueryRaw<TableRow>(
+                        """
+                        SELECT TABLE_SCHEMA AS [Schema], TABLE_NAME AS [Name]
+                        FROM INFORMATION_SCHEMA.TABLES
+                        WHERE TABLE_TYPE = N'BASE TABLE'
+                        ORDER BY TABLE_NAME
+                        """)
+                    .ToListAsync(cancellationToken);
+            }
 
             report.Tables = tables.Select(t => $"{t.Schema}.{t.Name}").ToList();
 
@@ -105,10 +119,17 @@ public sealed class DatabaseHealthChecker
                 report.KeyTables[key] = new KeyTableStatus { Exists = exists, RowCount = count };
             }
 
-            report.AppliedMigrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken)).ToList();
-            report.PendingMigrations = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
-            report.MigrationsAppliedCount = report.AppliedMigrations.Count;
-            report.MigrationsPendingCount = report.PendingMigrations.Count;
+            if (!isMySql)
+            {
+                report.AppliedMigrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken)).ToList();
+                report.PendingMigrations = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
+                report.MigrationsAppliedCount = report.AppliedMigrations.Count;
+                report.MigrationsPendingCount = report.PendingMigrations.Count;
+            }
+            else
+            {
+                report.Warnings.Add("MySQL: schema via EnsureCreated (لا EF migrations SQL Server).");
+            }
 
             if (report.TableCount == 0)
             {

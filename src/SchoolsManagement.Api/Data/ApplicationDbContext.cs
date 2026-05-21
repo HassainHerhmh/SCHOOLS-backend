@@ -115,10 +115,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<VoucherJournalEntryRecord>(e =>
         {
             e.Property(x => x.Id).ValueGeneratedNever();
-            e.HasIndex(x => x.Reference)
+            var referenceIndex = e.HasIndex(x => x.Reference)
                 .IsUnique()
-                .HasDatabaseName("IX_journal_entries_reference")
-                .HasFilter("[reference] <> N''");
+                .HasDatabaseName("IX_journal_entries_reference");
+            if (Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                referenceIndex.HasFilter("`reference` <> ''");
+            }
+            else
+            {
+                referenceIndex.HasFilter("[reference] <> N''");
+            }
         });
 
         builder.Entity<CurrencyExchangeRecord>(e =>

@@ -5,6 +5,15 @@ public static class ConnectionStringResolver
 {
     public static string? TryResolve(IConfiguration configuration)
     {
+        if (IsRailwayHost())
+        {
+            var mysql = BuildFromMysqlEnv();
+            if (!string.IsNullOrWhiteSpace(mysql))
+            {
+                return mysql;
+            }
+        }
+
         foreach (var cs in EnumerateCandidates(configuration, cloudOnly: IsRailwayHost()))
         {
             if (string.IsNullOrWhiteSpace(cs))
@@ -40,6 +49,7 @@ public static class ConnectionStringResolver
         yield return Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
         yield return Environment.GetEnvironmentVariable("SQLSERVER_CONNECTION_STRING");
         yield return Environment.GetEnvironmentVariable("CUSTOMCONNSTR_DefaultConnection");
+        yield return BuildFromMysqlEnv();
         yield return Environment.GetEnvironmentVariable("DATABASE_URL");
         yield return BuildFromSqlServerParts();
 
@@ -47,6 +57,58 @@ public static class ConnectionStringResolver
         {
             yield return configuration.GetConnectionString("DefaultConnection");
         }
+    }
+
+    public static string? BuildFromMysqlEnv()
+    {
+        var url = FirstEnv("MYSQL_URL", "MYSQL_PUBLIC_URL", "DATABASE_URL");
+        if (!string.IsNullOrWhiteSpace(url) && LooksLikeMySql(url))
+        {
+            var parsed = ParseMysqlUrl(url);
+            if (!string.IsNullOrWhiteSpace(parsed))
+            {
+                return parsed;
+            }
+        }
+
+        var host = FirstEnv("MYSQLHOST", "MYSQL_HOST");
+        var port = FirstEnv("MYSQLPORT", "MYSQL_PORT") ?? "3306";
+        var user = FirstEnv("MYSQLUSER", "MYSQL_USER");
+        var password = FirstEnv("MYSQLPASSWORD", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD");
+        var database = FirstEnv("MYSQLDATABASE", "MYSQL_DATABASE") ?? "railway";
+
+        if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(password))
+        {
+            return null;
+        }
+
+        return $"Server={host};Port={port};Database={database};User={user};Password={password};SslMode=Preferred;AllowPublicKeyRetrieval=True;";
+    }
+
+    private static string? ParseMysqlUrl(string url)
+    {
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        if (!string.Equals(uri.Scheme, "mysql", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var userInfo = uri.UserInfo.Split(':', 2);
+        var user = Uri.UnescapeDataString(userInfo[0]);
+        var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
+        var host = uri.Host;
+        var port = uri.Port > 0 ? uri.Port : 3306;
+        var database = uri.AbsolutePath.TrimStart('/');
+        if (string.IsNullOrWhiteSpace(database))
+        {
+            database = "railway";
+        }
+
+        return $"Server={host};Port={port};Database={database};User={user};Password={password};SslMode=Preferred;AllowPublicKeyRetrieval=True;";
     }
 
     private static string? BuildFromSqlServerParts()
@@ -86,23 +148,21 @@ public static class ConnectionStringResolver
         {
             "Connection string مفقود على السيرفر.",
             "",
-            "أضف في Railway (خدمة SCHOOLS-backend) Variables:",
-            "  ConnectionStrings__DefaultConnection",
-            "  = Server=xxx.database.windows.net,1433;Database=SchoolsDb;User Id=...;Password=...;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true",
+            "Railway + MySQL: اربط خدمة MySQL بـ SCHOOLS-backend (Variable Reference):",
+            "  MYSQL_URL أو MYSQLHOST + MYSQLUSER + MYSQLPASSWORD + MYSQLDATABASE",
             "",
-            "ملاحظة: المشروع يستخدم SQL Server فقط (Entity Framework SqlServer) — وليس MySQL."
+            "أو SQL Server محلي/سحابي:",
+            "  ConnectionStrings__DefaultConnection = Server=...;Database=SchoolsDb;..."
         };
 
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MYSQL_PUBLIC_URL"))
-            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MYSQL_URL")))
+        if (HasMysqlEnvVars())
         {
             hints.Add("");
-            hints.Add("وُجد MYSQL_PUBLIC_URL على Railway — لا يصلح لهذا API.");
-            hints.Add("أنشئ Azure SQL (أو SQL Server) واربط ConnectionStrings__DefaultConnection به.");
+            hints.Add("وُجدت متغيرات MySQL — تأكد أنها مربوطة بخدمة SCHOOLS-backend (ليس فقط داخل خدمة MySQL).");
         }
 
         hints.Add("");
-        hints.Add("تجاهل localhost\\SQLEXPRESS من appsettings على السحابة — يجب متغير ConnectionStrings__DefaultConnection لـ SQL سحابي.");
+        hints.Add("تجاهل localhost\\SQLEXPRESS من appsettings على السحابة.");
 
         if (IsRailwayHost())
         {
@@ -165,6 +225,10 @@ public static class ConnectionStringResolver
             .Select(p => p.Trim());
         return string.Join("; ", safe);
     }
+
+    public static bool HasMysqlEnvVars() =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MYSQL_URL"))
+        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MYSQLHOST"));
 
     public static bool IsRailwayHost()
     {

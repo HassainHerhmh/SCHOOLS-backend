@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Pomelo.EntityFrameworkCore.MySql;
 using SchoolsManagement.Api.Configuration;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.Identity;
@@ -41,16 +42,22 @@ else if (!databaseConfigured)
 {
     sqlConnectionString = ConnectionStringResolver.Resolve(builder.Configuration);
 }
-else if (ConnectionStringResolver.LooksLikeMySql(sqlConnectionString))
-{
-    throw new InvalidOperationException(
-        "سلسلة الاتصال MySQL — هذا API يحتاج SQL Server. عيّن ConnectionStrings__DefaultConnection لـ Azure SQL.");
-}
 
-builder.Services.AddSingleton(new DatabaseConfigState(databaseConfigured, sqlConnectionString!));
+var isMySql = DatabaseProviderHelper.IsMySqlConnectionString(sqlConnectionString);
+builder.Services.AddSingleton(new DatabaseConfigState(databaseConfigured, sqlConnectionString!, isMySql));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(sqlConnectionString));
+{
+    if (isMySql)
+    {
+        var version = new MySqlServerVersion(new Version(8, 0, 36));
+        options.UseMySql(sqlConnectionString!, version);
+    }
+    else
+    {
+        options.UseSqlServer(sqlConnectionString!);
+    }
+});
 
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -225,89 +232,23 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-// تطبيق هجرات EF تلقائياً (إنشاء journal_types / payment_types / receipt_types وغيرها عند غيابها في SchoolsDb)
 var dbConfig = app.Services.GetRequiredService<DatabaseConfigState>();
 if (!dbConfig.IsConfigured)
 {
     app.Logger.LogWarning(
-        "قاعدة البيانات غير مضبوطة — افتح /api/health/setup وأضف ConnectionStrings__DefaultConnection على Railway.");
+        "قاعدة البيانات غير مضبوطة — افتح /api/health/setup واربط MySQL أو SQL Server.");
 }
 else
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-    try
-    {
-        db.Database.Migrate();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل تطبيق هجرات قاعدة البيانات. تأكد من Connection String وتشغيل SQL Server.");
-    }
-
-    try
-    {
-        EmployeePayrollSchemaBootstrap.EnsureEmployeeChartAccountColumn(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل التحقق من عمود chart_account_id في جدول الموظفين.");
-    }
-
-    try
-    {
-        AccountingVoucherTablesBootstrap.EnsureExists(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إنشاء/التحقق من جداول سندات القبض والصرف والقيود اليومية ومصارفة العملة.");
-    }
-
-    try
-    {
-        JournalEntryPostedAtBootstrap.EnsurePostedAtColumn(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إضافة عمود posted_at لجدول القيود اليومية.");
-    }
-
-    try
-    {
-        UserPagePermissionsBootstrap.EnsureTable(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إنشاء جدول صلاحيات الصفحات.");
-    }
-
-    try
-    {
-        ApplicationUserPermissionsJsonBootstrap.EnsureColumn(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إضافة عمود permissions_json لجدول المستخدمين.");
-    }
-
-    try
-    {
-        SchoolExtendedTablesBootstrap.EnsureExists(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إنشاء جداول المدفوعات والخصومات والدرجات والمواد.");
-    }
-
-    try
-    {
-        ParentsAppTablesBootstrap.EnsureExists(db);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "فشل إنشاء جداول نشر بيانات تطبيق أولياء الأمور.");
-    }
+    DatabaseSchemaInitializer.ApplyAsync(
+            db,
+            dbConfig,
+            scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseSchema"),
+            CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
 
     try
     {

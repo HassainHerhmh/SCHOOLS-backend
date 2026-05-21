@@ -31,6 +31,7 @@ public class HealthController : ControllerBase
         status = "ok",
         service = "SchoolsManagement.Api",
         database_configured = _dbConfig.IsConfigured,
+        database_provider = _dbConfig.IsMySql ? "MySQL" : "SqlServer",
         check_database = "/api/health/db",
         setup_help = "/api/health/setup"
     });

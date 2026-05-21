@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SchoolsManagement.Api.Configuration;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.School;
 using SchoolsManagement.Api.Services;
@@ -350,6 +351,20 @@ public class SyncController : ControllerBase
 
     private async Task EnsureSyncCheckpointsTable(CancellationToken cancellationToken)
     {
+        if (DatabaseProviderHelper.IsMySql(_db))
+        {
+            await _db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS sync_checkpoints (
+                    `Key` varchar(120) NOT NULL,
+                    synced_at datetime(6) NOT NULL,
+                    PRIMARY KEY (`Key`)
+                );
+                """,
+                cancellationToken);
+            return;
+        }
+
         await _db.Database.ExecuteSqlRawAsync(
             """
 IF OBJECT_ID(N'dbo.sync_checkpoints', N'U') IS NULL
