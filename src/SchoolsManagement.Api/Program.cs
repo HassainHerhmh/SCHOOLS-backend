@@ -27,17 +27,36 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
-var sqlConnectionString = ConnectionStringResolver.Resolve(builder.Configuration);
-if (ConnectionStringResolver.IsRailwayHost() && ConnectionStringResolver.LooksLikeLocalSql(sqlConnectionString))
+var sqlConnectionString = ConnectionStringResolver.TryResolve(builder.Configuration);
+var databaseConfigured = !string.IsNullOrWhiteSpace(sqlConnectionString);
+
+if (!databaseConfigured && ConnectionStringResolver.IsRailwayHost())
+{
+    builder.Logging.AddConsole();
+    var msg = ConnectionStringResolver.BuildMissingConnectionMessage();
+    Console.WriteLine("[SchoolsManagement.Api] " + msg.ReplaceLineEndings(" | "));
+    sqlConnectionString = ConnectionStringResolver.PlaceholderConnectionString;
+}
+else if (!databaseConfigured)
+{
+    sqlConnectionString = ConnectionStringResolver.Resolve(builder.Configuration);
+}
+else if (ConnectionStringResolver.IsRailwayHost()
+         && ConnectionStringResolver.LooksLikeLocalSql(sqlConnectionString))
 {
     throw new InvalidOperationException(
         """
         Railway: لا يمكن استخدام localhost\SQLEXPRESS على السحابة.
-        أضف في Variables لمشروع Railway:
-          ConnectionStrings__DefaultConnection = Server=...;Database=SchoolsDb;User Id=...;Password=...;Encrypt=True;TrustServerCertificate=True;
-        (Azure SQL أو SQL Server مستضاف — ليس الجهاز المحلي)
+        عيّن ConnectionStrings__DefaultConnection لـ Azure SQL أو SQL Server سحابي.
         """);
 }
+else if (ConnectionStringResolver.LooksLikeMySql(sqlConnectionString))
+{
+    throw new InvalidOperationException(
+        "سلسلة الاتصال MySQL — هذا API يحتاج SQL Server. عيّن ConnectionStrings__DefaultConnection لـ Azure SQL.");
+}
+
+builder.Services.AddSingleton(new DatabaseConfigState(databaseConfigured, sqlConnectionString!));
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(sqlConnectionString));
@@ -216,6 +235,13 @@ app.UseExceptionHandler(errorApp =>
 });
 
 // تطبيق هجرات EF تلقائياً (إنشاء journal_types / payment_types / receipt_types وغيرها عند غيابها في SchoolsDb)
+var dbConfig = app.Services.GetRequiredService<DatabaseConfigState>();
+if (!dbConfig.IsConfigured)
+{
+    app.Logger.LogWarning(
+        "قاعدة البيانات غير مضبوطة — افتح /api/health/setup وأضف ConnectionStrings__DefaultConnection على Railway.");
+}
+else
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

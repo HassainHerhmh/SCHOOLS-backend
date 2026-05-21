@@ -13,13 +13,16 @@ public class HealthController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly DatabaseHealthChecker _checker;
-    private readonly string _connectionString;
+    private readonly DatabaseConfigState _dbConfig;
 
-    public HealthController(ApplicationDbContext db, DatabaseHealthChecker checker, IConfiguration config)
+    public HealthController(
+        ApplicationDbContext db,
+        DatabaseHealthChecker checker,
+        DatabaseConfigState dbConfig)
     {
         _db = db;
         _checker = checker;
-        _connectionString = ConnectionStringResolver.Resolve(config);
+        _dbConfig = dbConfig;
     }
 
     [HttpGet]
@@ -27,14 +30,35 @@ public class HealthController : ControllerBase
     {
         status = "ok",
         service = "SchoolsManagement.Api",
-        sql_configured = !ConnectionStringResolver.LooksLikeLocalSql(_connectionString),
-        check_database = "/api/health/db"
+        database_configured = _dbConfig.IsConfigured,
+        check_database = "/api/health/db",
+        setup_help = "/api/health/setup"
+    });
+
+    [HttpGet("setup")]
+    public IActionResult Setup() => Ok(new
+    {
+        status = _dbConfig.IsConfigured ? "configured" : "missing",
+        message = _dbConfig.IsConfigured
+            ? "Connection string موجود."
+            : ConnectionStringResolver.BuildMissingConnectionMessage(),
+        connection_summary = ConnectionStringResolver.RedactForDisplay(_dbConfig.ConnectionString)
     });
 
     [HttpGet("db")]
     public async Task<IActionResult> Database(CancellationToken cancellationToken)
     {
-        var report = await _checker.CheckAsync(_db, _connectionString, cancellationToken);
+        if (!_dbConfig.IsConfigured)
+        {
+            return StatusCode(503, new
+            {
+                status = "error",
+                message = ConnectionStringResolver.BuildMissingConnectionMessage(),
+                setup_help = "/api/health/setup"
+            });
+        }
+
+        var report = await _checker.CheckAsync(_db, _dbConfig.ConnectionString, cancellationToken);
         var statusCode = report.Status switch
         {
             "error" => StatusCodes.Status503ServiceUnavailable,
