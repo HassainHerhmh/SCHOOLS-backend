@@ -74,6 +74,33 @@ public class SyncController : ControllerBase
         return Ok(progress);
     }
 
+    /// <summary>عدد السجلات المحفوظة على سيرفر رويال (للتحقق بعد الرفع من المدرسة).</summary>
+    [HttpGet("parents-data-status")]
+    public async Task<IActionResult> ParentsDataStatus(CancellationToken cancellationToken)
+    {
+        if (!ValidateParentsSyncKey())
+        {
+            return Unauthorized(new { message = "مفتاح مزامنة رويال غير صالح." });
+        }
+
+        try
+        {
+            await ParentsAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
+            var counts = new ParentsRemoteDataCounts
+            {
+                Students = await _db.ParentsStudentSummaries.CountAsync(cancellationToken),
+                Classes = await _db.ParentsClassPublishes.CountAsync(cancellationToken),
+                Sections = await _db.ParentsSectionPublishes.CountAsync(cancellationToken),
+                Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken)
+            };
+            return Ok(counts);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "تعذر قراءة بيانات رويال", error = ex.Message });
+        }
+    }
+
     /// <summary>استقبال البيانات على سيرفر رويال الخارجي (يُستدعى من المدرسة المحلية فقط).</summary>
     [HttpPost("ingest-parents")]
     public async Task<IActionResult> IngestParents([FromBody] ParentsSyncIngestPayload payload, CancellationToken cancellationToken)
@@ -124,21 +151,67 @@ public class SyncController : ControllerBase
             var totalItems = Math.Max(1, plan.TotalItems);
             SetProgress(sessionId, totalItems, 0, "uploading", "جاري الرفع إلى سيرفر رويال الخارجي", itemLabel: plan.ItemLabel);
 
-            await _remotePublisher.PublishAsync(
+            var uploaded = await _remotePublisher.PublishAsync(
                 plan,
-                (uploaded, total, message) =>
+                (uploadedCount, total, message) =>
                 {
-                    SetProgress(sessionId, total, uploaded, "uploading", message, itemLabel: plan.ItemLabel);
+                    SetProgress(sessionId, total, uploadedCount, "uploading", message, itemLabel: plan.ItemLabel);
                 },
                 cancellationToken);
 
+            SetProgress(sessionId, totalItems, totalItems, "uploading", "جاري التحقق من وصول البيانات إلى سيرفر رويال", itemLabel: plan.ItemLabel);
+
+            ParentsRemoteDataCounts? remoteCounts;
+            try
+            {
+                remoteCounts = await _remotePublisher.FetchRemoteCountsAsync(cancellationToken);
+            }
+            catch (Exception verifyEx)
+            {
+                remoteCounts = null;
+                var outcome = ParentsSyncVerification.Evaluate(plan, uploaded, null);
+                outcome.Success = false;
+                outcome.FailureReason = $"تعذر التحقق من سيرفر رويال: {verifyEx.Message}";
+                outcome.Message = "فشل التحقق بعد الرفع.";
+                SetProgress(sessionId, totalItems, totalItems, "failed", outcome.FailureReason, true, true, outcome.FailureReason);
+                return BadRequest(new
+                {
+                    success = false,
+                    message = outcome.Message,
+                    failure_reason = outcome.FailureReason,
+                    uploaded,
+                    remote = remoteCounts,
+                    session_id = sessionId
+                });
+            }
+
+            var result = ParentsSyncVerification.Evaluate(plan, uploaded, remoteCounts);
+            if (!result.Success)
+            {
+                SetProgress(sessionId, totalItems, totalItems, "failed", result.FailureReason ?? result.Message, true, true, result.FailureReason);
+                return BadRequest(new
+                {
+                    success = false,
+                    message = result.Message,
+                    failure_reason = result.FailureReason,
+                    uploaded = result.Uploaded,
+                    remote = result.Remote,
+                    count = totalItems,
+                    session_id = sessionId,
+                    remote_url = _remotePublisher.GetRemoteSettings().RemoteUrl
+                });
+            }
+
             await SaveSuccessfulCheckpoints(plan, cancellationToken);
 
-            SetProgress(sessionId, totalItems, totalItems, "completed", "اكتمل الرفع إلى سيرفر رويال", true, itemLabel: plan.ItemLabel);
+            SetProgress(sessionId, totalItems, totalItems, "completed", result.Message, true, itemLabel: plan.ItemLabel);
             return Ok(new
             {
-                message = "تم رفع بيانات تطبيق أولياء الأمور إلى سيرفر رويال الخارجي بنجاح.",
+                success = true,
+                message = result.Message,
                 count = totalItems,
+                uploaded = result.Uploaded,
+                remote = result.Remote,
                 session_id = sessionId,
                 remote_url = _remotePublisher.GetRemoteSettings().RemoteUrl
             });

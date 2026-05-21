@@ -59,3 +59,21 @@ public class ParentsIngestResult
 
     public int Total => Students + Classes + Sections + Attendance;
 }
+
+public class ParentsRemoteDataCounts
+{
+    public int Students { get; set; }
+    public int Classes { get; set; }
+    public int Sections { get; set; }
+    public int Attendance { get; set; }
+}
+
+/// <summary>نتيجة رفع + تحقق من وجود البيانات على سيرفر رويال (للعرض في الواجهة).</summary>
+public class ParentsPublishOutcome
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string? FailureReason { get; set; }
+    public ParentsIngestResult Uploaded { get; set; } = new();
+    public ParentsRemoteDataCounts? Remote { get; set; }
+}

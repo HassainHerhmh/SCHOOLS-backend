@@ -79,6 +79,12 @@ public class ParentsRemoteSyncPublisher
                     Students = chunk
                 }, cancellationToken);
                 aggregate.Students += result.Students;
+                if (chunk.Count > 0 && result.Students <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"سيرفر رويال لم يحفظ دفعة الطلاب ({chunk.Count} سجل) — تحقق من جدول parents_students_summary على MySQL.");
+                }
+
                 uploadedItems += chunk.Count;
                 onProgress?.Invoke(uploadedItems, totalItems, $"تم رفع {uploadedItems} من {totalItems} {plan.ItemLabel}");
             }
@@ -96,6 +102,11 @@ public class ParentsRemoteSyncPublisher
                     Classes = classes
                 }, cancellationToken);
                 aggregate.Classes += result.Classes;
+                if (classes.Count > 0 && result.Classes <= 0)
+                {
+                    throw new InvalidOperationException("سيرفر رويال لم يحفظ بيانات الصفوف.");
+                }
+
                 uploadedItems += plan.ChangedClasses;
                 onProgress?.Invoke(uploadedItems, totalItems, "تم رفع الصفوف");
             }
@@ -113,6 +124,11 @@ public class ParentsRemoteSyncPublisher
                     Sections = sections
                 }, cancellationToken);
                 aggregate.Sections += result.Sections;
+                if (sections.Count > 0 && result.Sections <= 0)
+                {
+                    throw new InvalidOperationException("سيرفر رويال لم يحفظ بيانات الشعب.");
+                }
+
                 uploadedItems += plan.ChangedSections;
                 onProgress?.Invoke(uploadedItems, totalItems, "تم رفع الشعب");
             }
@@ -132,12 +148,42 @@ public class ParentsRemoteSyncPublisher
                     Attendance = chunk
                 }, cancellationToken);
                 aggregate.Attendance += result.Attendance;
+                if (chunk.Count > 0 && result.Attendance <= 0)
+                {
+                    throw new InvalidOperationException("سيرفر رويال لم يحفظ دفعة الحضور.");
+                }
+
                 uploadedItems += chunk.Count;
                 onProgress?.Invoke(uploadedItems, totalItems, $"تم رفع {uploadedItems} من {totalItems} {plan.ItemLabel}");
             }
         }
 
         return aggregate;
+    }
+
+    public async Task<ParentsRemoteDataCounts> FetchRemoteCountsAsync(CancellationToken cancellationToken = default)
+    {
+        var (remoteUrl, syncKey, _) = GetRemoteSettings();
+        if (string.IsNullOrWhiteSpace(remoteUrl) || string.IsNullOrWhiteSpace(syncKey))
+        {
+            throw new InvalidOperationException("لم يُضبط سيرفر رويال الخارجي.");
+        }
+
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(60);
+        var statusUrl = $"{remoteUrl}/api/sync/parents-data-status";
+        using var request = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+        request.Headers.Add("X-Parents-Sync-Key", syncKey);
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(FormatRemoteHttpFailure(response.StatusCode, body, statusUrl));
+        }
+
+        var counts = JsonSerializer.Deserialize<ParentsRemoteDataCounts>(body, JsonOptions);
+        return counts ?? new ParentsRemoteDataCounts();
     }
 
     private async Task<ParentsIngestResult> PostIngestAsync(
