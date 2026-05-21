@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using SchoolsManagement.Api.Configuration;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.Identity;
 using SchoolsManagement.Api.Services;
@@ -26,8 +27,20 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
+var sqlConnectionString = ConnectionStringResolver.Resolve(builder.Configuration);
+if (ConnectionStringResolver.IsRailwayHost() && ConnectionStringResolver.LooksLikeLocalSql(sqlConnectionString))
+{
+    throw new InvalidOperationException(
+        """
+        Railway: لا يمكن استخدام localhost\SQLEXPRESS على السحابة.
+        أضف في Variables لمشروع Railway:
+          ConnectionStrings__DefaultConnection = Server=...;Database=SchoolsDb;User Id=...;Password=...;Encrypt=True;TrustServerCertificate=True;
+        (Azure SQL أو SQL Server مستضاف — ليس الجهاز المحلي)
+        """);
+}
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(sqlConnectionString));
 
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -73,6 +86,7 @@ builder.Services.AddScoped<UserPermissionService>();
 builder.Services.AddScoped<PermissionMatrixService>();
 builder.Services.AddScoped<ParentsAppIngestService>();
 builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
+builder.Services.AddSingleton<DatabaseHealthChecker>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<SalaryJournalMonthEndHostedService>();
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -331,8 +345,6 @@ app.UseAuthentication();
 app.UseMiddleware<SchoolsManagement.Api.Middleware.ApiPermissionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
-
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "SchoolsManagement.Api" }));
 
 if (serveSpa)
 {

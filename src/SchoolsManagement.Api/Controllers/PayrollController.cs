@@ -251,6 +251,212 @@ public class PayrollController : ControllerBase
         return yer?.Id ?? list[0].Id;
     }
 
+    private static (DateTimeOffset Start, DateTimeOffset End) MonthVoucherRange(int year, int month)
+    {
+        var start = new DateTimeOffset(new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc));
+        var end = start.AddMonths(1);
+        return (start, end);
+    }
+
+    /// <summary>صافي القيود على الحساب (مدين − دائن) كما في تقرير الحسابات.</summary>
+    private static decimal ComputeLedgerNetBalance(
+        IEnumerable<(int? ToAccountId, int? FromAccountId, decimal Amount)> entries,
+        int chartAccountId)
+    {
+        decimal balance = 0;
+        foreach (var e in entries)
+        {
+            if (e.ToAccountId == chartAccountId)
+            {
+                balance += e.Amount;
+            }
+
+            if (e.FromAccountId == chartAccountId)
+            {
+                balance -= e.Amount;
+            }
+        }
+
+        return balance;
+    }
+
+    private static IQueryable<VoucherJournalEntryRecord> LedgerEntriesForAccountsQuery(
+        IQueryable<VoucherJournalEntryRecord> query,
+        IReadOnlyList<int> chartAccountIds)
+    {
+        return query.Where(e =>
+            (e.ToAccountId != null && chartAccountIds.Contains(e.ToAccountId.Value))
+            || (e.FromAccountId != null && chartAccountIds.Contains(e.FromAccountId.Value)));
+    }
+
+    /// <summary>حركة الشهر فقط (لحساب المبلغ المستحق للصرف).</summary>
+    private async Task<Dictionary<int, decimal>> SumLedgerMonthMovementByChartAccountAsync(
+        IReadOnlyList<int> chartAccountIds,
+        int year,
+        int month,
+        CancellationToken ct)
+    {
+        if (chartAccountIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var (start, end) = MonthVoucherRange(year, month);
+        var entries = await LedgerEntriesForAccountsQuery(_db.VoucherJournalEntries.AsNoTracking(), chartAccountIds)
+            .Where(e => e.EntryDate >= start && e.EntryDate < end)
+            .Select(e => new { e.ToAccountId, e.FromAccountId, e.Amount })
+            .ToListAsync(ct);
+
+        return BuildLedgerBalanceMap(
+            chartAccountIds,
+            entries.Select(e => (e.ToAccountId, e.FromAccountId, e.Amount)));
+    }
+
+    /// <summary>رصيد تراكمي حتى نهاية الشهر (يشمل الرصيد السابق) — كتقرير «مع الرصيد السابق».</summary>
+    private async Task<Dictionary<int, decimal>> SumLedgerCumulativeThroughMonthAsync(
+        IReadOnlyList<int> chartAccountIds,
+        int year,
+        int month,
+        CancellationToken ct)
+    {
+        if (chartAccountIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var (_, endExclusive) = MonthVoucherRange(year, month);
+        var entries = await LedgerEntriesForAccountsQuery(_db.VoucherJournalEntries.AsNoTracking(), chartAccountIds)
+            .Where(e => e.EntryDate < endExclusive)
+            .Select(e => new { e.ToAccountId, e.FromAccountId, e.Amount })
+            .ToListAsync(ct);
+
+        return BuildLedgerBalanceMap(
+            chartAccountIds,
+            entries.Select(e => (e.ToAccountId, e.FromAccountId, e.Amount)));
+    }
+
+    private static Dictionary<int, decimal> BuildLedgerBalanceMap(
+        IReadOnlyList<int> chartAccountIds,
+        IEnumerable<(int? ToAccountId, int? FromAccountId, decimal Amount)> entries)
+    {
+        var result = chartAccountIds.ToDictionary(id => id, _ => 0m);
+        foreach (var chartId in chartAccountIds)
+        {
+            result[chartId] = ComputeLedgerNetBalance(entries, chartId);
+        }
+
+        return result;
+    }
+
+    private async Task<Dictionary<int, decimal>> SumCustodyByChartAccountAsync(
+        IReadOnlyList<int> chartAccountIds,
+        int year,
+        int month,
+        CancellationToken ct)
+    {
+        if (chartAccountIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var (start, end) = MonthVoucherRange(year, month);
+        var rows = await _db.PaymentVouchers.AsNoTracking()
+            .Where(v => v.AccountId != null
+                        && chartAccountIds.Contains(v.AccountId.Value)
+                        && v.VoucherDate >= start
+                        && v.VoucherDate < end)
+            .GroupBy(v => v.AccountId!.Value)
+            .Select(g => new { AccountId = g.Key, Total = g.Sum(v => v.Amount) })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(x => x.AccountId, x => x.Total);
+    }
+
+    private async Task<(decimal Custody, decimal CumulativeBalance, decimal MonthMovement)> GetCustodyAndBalanceAsync(
+        EmployeeMonthlyAccountRecord account,
+        int? chartAccountId,
+        CancellationToken ct)
+    {
+        if (!chartAccountId.HasValue || chartAccountId.Value <= 0)
+        {
+            return (0, 0, 0);
+        }
+
+        var chartIds = new List<int> { chartAccountId.Value };
+        var custodyMap = await SumCustodyByChartAccountAsync(chartIds, account.Year, account.Month, ct);
+        var cumulativeMap =
+            await SumLedgerCumulativeThroughMonthAsync(chartIds, account.Year, account.Month, ct);
+        var monthMap = await SumLedgerMonthMovementByChartAccountAsync(chartIds, account.Year, account.Month, ct);
+
+        var custody = custodyMap.GetValueOrDefault(chartAccountId.Value);
+        var cumulative = cumulativeMap.GetValueOrDefault(chartAccountId.Value);
+        var monthMovement = monthMap.GetValueOrDefault(chartAccountId.Value);
+        return (custody, cumulative, monthMovement);
+    }
+
+    /// <summary>
+    /// المبلغ المستحق للصرف: يعتمد على صافي الراتب ورصيد القيود والعهدة (سندات الصرف).
+    /// عند «له» (رصيد سالب في الدفتر) لا يُضاف الرصيد إلى الصافي — يُؤخذ الأقل بين الاستحقاق والصافي.
+    /// </summary>
+    private static decimal ComputeAmountDue(decimal netSalary, decimal ledgerBalance, decimal custodyPaid)
+    {
+        if (netSalary <= 0)
+        {
+            return 0;
+        }
+
+        decimal fromLedger;
+        if (ledgerBalance < 0)
+        {
+            fromLedger = Math.Min(netSalary, -ledgerBalance);
+        }
+        else if (ledgerBalance >= netSalary)
+        {
+            fromLedger = 0;
+        }
+        else
+        {
+            fromLedger = netSalary - ledgerBalance;
+        }
+
+        var remainingByNetAndCustody = Math.Max(0, netSalary - custodyPaid);
+        return Math.Min(fromLedger, remainingByNetAndCustody);
+    }
+
+    private static void ApplyBalanceFields(
+        Dictionary<string, object?> mapped,
+        decimal custody,
+        decimal cumulativeBalance,
+        decimal monthLedgerMovement,
+        decimal netSalary)
+    {
+        var amountDue = ComputeAmountDue(netSalary, monthLedgerMovement, custody);
+        mapped["custody_amount"] = custody;
+        mapped["employee_balance"] = cumulativeBalance;
+        mapped["employee_balance_month"] = monthLedgerMovement;
+        mapped["employee_balance_display"] =
+            cumulativeBalance > 0 ? -cumulativeBalance : cumulativeBalance;
+        mapped["employee_balance_side"] =
+            cumulativeBalance > 0 ? "عليه" : cumulativeBalance < 0 ? "له" : "";
+        // لا صرف عندما الرصيد التراكمي «عليه» (يُعرض سالباً في الواجهة)
+        mapped["can_disburse"] = amountDue > 0 && cumulativeBalance <= 0;
+        mapped["amount_due"] = amountDue;
+    }
+
+    private static void SyncPaidFlagsFromBalance(
+        EmployeeMonthlyAccountRecord account,
+        decimal custody,
+        decimal monthLedgerMovement)
+    {
+        var amountDue = ComputeAmountDue(account.NetSalary, monthLedgerMovement, custody);
+        account.IsPaid = amountDue <= 0 && custody > 0;
+        account.Status = account.IsPaid
+            ? "paid"
+            : custody > 0 || amountDue > 0
+                ? "partial"
+                : "draft";
+    }
+
     private Dictionary<string, object?> MapMonthAccount(EmployeeMonthlyAccountRecord a)
     {
         return new Dictionary<string, object?>
@@ -306,7 +512,55 @@ public class PayrollController : ControllerBase
             .Where(x => x.Year == year && x.Month == month)
             .OrderBy(x => x.EmployeeName)
             .ToListAsync(ct);
-        return Ok(rows.Select(MapMonthAccount));
+
+        return Ok(await EnrichMonthlyAccountsAsync(rows, ct));
+    }
+
+    private async Task<List<Dictionary<string, object?>>> EnrichMonthlyAccountsAsync(
+        List<EmployeeMonthlyAccountRecord> rows,
+        CancellationToken ct)
+    {
+        if (rows.Count == 0)
+        {
+            return new List<Dictionary<string, object?>>();
+        }
+
+        var employeeIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+        var chartByEmployee = await _db.EmployeeRecords.AsNoTracking()
+            .Where(e => employeeIds.Contains(e.Id))
+            .Select(e => new { e.Id, e.ChartAccountId })
+            .ToDictionaryAsync(e => e.Id, e => e.ChartAccountId, ct);
+
+        var chartIds = chartByEmployee.Values
+            .Where(c => c.HasValue && c.Value > 0)
+            .Select(c => c!.Value)
+            .Distinct()
+            .ToList();
+
+        var year = rows[0].Year;
+        var month = rows[0].Month;
+        var custodyByChart = await SumCustodyByChartAccountAsync(chartIds, year, month, ct);
+        var cumulativeByChart = await SumLedgerCumulativeThroughMonthAsync(chartIds, year, month, ct);
+        var monthMovementByChart = await SumLedgerMonthMovementByChartAccountAsync(chartIds, year, month, ct);
+
+        var result = new List<Dictionary<string, object?>>(rows.Count);
+        foreach (var row in rows)
+        {
+            var mapped = MapMonthAccount(row);
+            var chartId = chartByEmployee.GetValueOrDefault(row.EmployeeId);
+            var custody = chartId is > 0 ? custodyByChart.GetValueOrDefault(chartId.Value) : 0m;
+            var cumulative = chartId is > 0 ? cumulativeByChart.GetValueOrDefault(chartId.Value) : 0m;
+            var monthMovement = chartId is > 0 ? monthMovementByChart.GetValueOrDefault(chartId.Value) : 0m;
+            ApplyBalanceFields(mapped, custody, cumulative, monthMovement, row.NetSalary);
+            if (chartId is > 0)
+            {
+                mapped["chart_account_id"] = chartId.Value;
+            }
+
+            result.Add(mapped);
+        }
+
+        return result;
     }
 
     [HttpGet("monthly-accounts/by-employee")]
@@ -328,7 +582,8 @@ public class PayrollController : ControllerBase
             return NotFound();
         }
 
-        return Ok(MapMonthAccount(row));
+        var enriched = await EnrichMonthlyAccountsAsync(new List<EmployeeMonthlyAccountRecord> { row }, ct);
+        return Ok(enriched[0]);
     }
 
     public class MonthlyAccountCreateBody
@@ -398,7 +653,8 @@ public class PayrollController : ControllerBase
 
         _db.EmployeeMonthlyAccounts.Add(acc);
         await _db.SaveChangesAsync(ct);
-        return Ok(MapMonthAccount(acc));
+        var created = await EnrichMonthlyAccountsAsync(new List<EmployeeMonthlyAccountRecord> { acc }, ct);
+        return Ok(created[0]);
     }
 
     [HttpPost("monthly-upsert")]
@@ -453,7 +709,8 @@ public class PayrollController : ControllerBase
             };
             _db.EmployeeMonthlyAccounts.Add(acc);
             await _db.SaveChangesAsync(ct);
-            return Ok(MapMonthAccount(acc));
+            var inserted = await EnrichMonthlyAccountsAsync(new List<EmployeeMonthlyAccountRecord> { acc }, ct);
+            return Ok(inserted[0]);
         }
 
         if (!existing.IsPaid &&
@@ -477,7 +734,8 @@ public class PayrollController : ControllerBase
 
         existing.UpdatedAt = now;
         await _db.SaveChangesAsync(ct);
-        return Ok(MapMonthAccount(existing));
+        var updated = await EnrichMonthlyAccountsAsync(new List<EmployeeMonthlyAccountRecord> { existing }, ct);
+        return Ok(updated[0]);
     }
 
     [HttpGet("employees-without-account")]
@@ -511,11 +769,6 @@ public class PayrollController : ControllerBase
             return NotFound();
         }
 
-        if (account.IsPaid)
-        {
-            return BadRequest(new { message = "لا يمكن تعديل الخصومات بعد صرف الراتب." });
-        }
-
         if (bodyElement.ValueKind != JsonValueKind.Array)
         {
             return BadRequest(new { message = "يجب أن تكون الخصومات مصفوفة JSON." });
@@ -531,7 +784,16 @@ public class PayrollController : ControllerBase
         account.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        return Ok(MapMonthAccount(account));
+        var employeeAfterSet = await _db.EmployeeRecords.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == account.EmployeeId, ct);
+        var (custodySet, cumulativeSet, monthSet) =
+            await GetCustodyAndBalanceAsync(account, employeeAfterSet?.ChartAccountId, ct);
+        SyncPaidFlagsFromBalance(account, custodySet, monthSet);
+        await _db.SaveChangesAsync(ct);
+
+        var mappedSet = MapMonthAccount(account);
+        ApplyBalanceFields(mappedSet, custodySet, cumulativeSet, monthSet, account.NetSalary);
+        return Ok(mappedSet);
     }
 
     [HttpPost("monthly-accounts/{id:guid}/deductions")]
@@ -541,11 +803,6 @@ public class PayrollController : ControllerBase
         if (account is null)
         {
             return NotFound();
-        }
-
-        if (account.IsPaid)
-        {
-            return BadRequest(new { message = "لا يمكن إضافة خصم بعد صرف الراتب." });
         }
 
         var node = JsonNode.Parse(bodyElement.GetRawText()) as JsonObject
@@ -631,8 +888,14 @@ public class PayrollController : ControllerBase
             PostedAt = now,
         });
 
+        var (custodyDed, cumulativeDed, monthDed) =
+            await GetCustodyAndBalanceAsync(account, employee.ChartAccountId, ct);
+        SyncPaidFlagsFromBalance(account, custodyDed, monthDed);
         await _db.SaveChangesAsync(ct);
-        return Ok(MapMonthAccount(account));
+
+        var mappedDed = MapMonthAccount(account);
+        ApplyBalanceFields(mappedDed, custodyDed, cumulativeDed, monthDed, account.NetSalary);
+        return Ok(mappedDed);
     }
 
     [HttpPost("monthly-accounts/{id:guid}/bonuses")]
@@ -642,11 +905,6 @@ public class PayrollController : ControllerBase
         if (account is null)
         {
             return NotFound();
-        }
-
-        if (account.IsPaid)
-        {
-            return BadRequest(new { message = "لا يمكن إضافة مكافأة بعد صرف الراتب." });
         }
 
         var node = JsonNode.Parse(bodyElement.GetRawText()) as JsonObject
@@ -732,8 +990,14 @@ public class PayrollController : ControllerBase
             PostedAt = now,
         });
 
+        var (custodyBon, cumulativeBon, monthBon) =
+            await GetCustodyAndBalanceAsync(account, employee.ChartAccountId, ct);
+        SyncPaidFlagsFromBalance(account, custodyBon, monthBon);
         await _db.SaveChangesAsync(ct);
-        return Ok(MapMonthAccount(account));
+
+        var mappedBon = MapMonthAccount(account);
+        ApplyBalanceFields(mappedBon, custodyBon, cumulativeBon, monthBon, account.NetSalary);
+        return Ok(mappedBon);
     }
 
     [HttpPut("monthly-accounts/{id:guid}/attendance")]
@@ -828,14 +1092,29 @@ public class PayrollController : ControllerBase
             return NotFound();
         }
 
-        if (account.IsPaid)
+        var employee = await _db.EmployeeRecords.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == account.EmployeeId, ct);
+        if (employee is null)
         {
-            return Conflict(new { message = "تم صرف راتب هذا الشهر مسبقاً." });
+            return BadRequest(new { message = "الموظف غير موجود لهذا الحساب الشهري." });
         }
 
-        if (account.NetSalary <= 0)
+        if (!employee.ChartAccountId.HasValue || employee.ChartAccountId.Value <= 0)
         {
-            return BadRequest(new { message = "صافي الراتب يجب أن يكون أكبر من صفر." });
+            return BadRequest(new { message = "يجب ربط الموظف بحساب محاسبي فرعي قبل صرف الراتب." });
+        }
+
+        var (custodyBefore, cumulativeBefore, monthBefore) =
+            await GetCustodyAndBalanceAsync(account, employee.ChartAccountId, ct);
+        if (cumulativeBefore > 0)
+        {
+            return BadRequest(new { message = "لا يمكن الصرف: رصيد الحساب عليه (يظهر سالباً)." });
+        }
+
+        var payAmount = ComputeAmountDue(account.NetSalary, monthBefore, custodyBefore);
+        if (payAmount <= 0)
+        {
+            return BadRequest(new { message = "لا يوجد مبلغ مستحق للصرف." });
         }
 
         var paymentType = NormalizeSalaryPaymentType(body.PaymentMethod);
@@ -878,18 +1157,6 @@ public class PayrollController : ControllerBase
             }
         }
 
-        var employee = await _db.EmployeeRecords.AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == account.EmployeeId, ct);
-        if (employee is null)
-        {
-            return BadRequest(new { message = "الموظف غير موجود لهذا الحساب الشهري." });
-        }
-
-        if (!employee.ChartAccountId.HasValue || employee.ChartAccountId.Value <= 0)
-        {
-            return BadRequest(new { message = "يجب ربط الموظف بحساب محاسبي فرعي قبل صرف الراتب." });
-        }
-
         var currencyId = await ResolveDefaultOperationalCurrencyIdAsync(ct);
         if (!currencyId.HasValue || currencyId.Value <= 0)
         {
@@ -920,7 +1187,7 @@ public class PayrollController : ControllerBase
             BankAccountId = bankId,
             TransferNo = (body.TransferNo ?? "").Trim(),
             CurrencyId = currencyId,
-            Amount = account.NetSalary,
+            Amount = payAmount,
             AccountId = employee.ChartAccountId.Value,
             Notes = journalDesc,
             CreatedBy = 1,
@@ -939,7 +1206,7 @@ public class PayrollController : ControllerBase
             FromAccountId = sourceChartAccountId.Value,
             ToAccountId = employee.ChartAccountId.Value,
             CurrencyId = currencyId,
-            Amount = account.NetSalary,
+            Amount = payAmount,
             Reference = journalRef,
             CreatedBy = 1,
             BranchId = 1,
@@ -947,8 +1214,6 @@ public class PayrollController : ControllerBase
             PostedAt = now,
         });
 
-        account.IsPaid = true;
-        account.Status = "paid";
         account.PaidAt = now;
         account.PaidBy = body.PaidBy;
         account.PaymentMethod = SalaryPaymentMethodLabel(paymentType);
@@ -956,10 +1221,17 @@ public class PayrollController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
 
+        var (custodyAfter, cumulativeAfter, monthAfter) =
+            await GetCustodyAndBalanceAsync(account, employee.ChartAccountId, ct);
+        SyncPaidFlagsFromBalance(account, custodyAfter, monthAfter);
+        await _db.SaveChangesAsync(ct);
+
         var mapped = MapMonthAccount(account);
+        ApplyBalanceFields(mapped, custodyAfter, cumulativeAfter, monthAfter, account.NetSalary);
         mapped["payment_voucher_id"] = voucherId;
         mapped["payment_voucher_no"] = voucherNo;
         mapped["journal_reference"] = journalRef;
+        mapped["disbursed_amount"] = payAmount;
         return Ok(mapped);
     }
 

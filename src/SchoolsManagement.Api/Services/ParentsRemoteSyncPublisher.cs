@@ -160,8 +160,7 @@ public class ParentsRemoteSyncPublisher
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException(
-                $"فشل الرفع إلى سيرفر رويال ({(int)response.StatusCode}): {body}");
+            throw new InvalidOperationException(FormatRemoteHttpFailure(response.StatusCode, body, ingestUrl));
         }
 
         var result = JsonSerializer.Deserialize<ParentsIngestResult>(body, JsonOptions);
@@ -259,6 +258,54 @@ public class ParentsRemoteSyncPublisher
                 Status = a.Status
             })
             .ToListAsync(ct);
+    }
+
+    private static string FormatRemoteHttpFailure(System.Net.HttpStatusCode status, string body, string ingestUrl)
+    {
+        var code = (int)status;
+        var detail = ExtractJsonErrorMessage(body) ?? body.Trim();
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            detail = "(لا يوجد نص تفصيلي من السيرفر)";
+        }
+
+        if (detail.Length > 1500)
+        {
+            detail = detail[..1500] + "…";
+        }
+
+        return $"سيرفر رويال ({code}) — {detail} — {ingestUrl}";
+    }
+
+    private static string? ExtractJsonErrorMessage(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            foreach (var key in new[] { "message", "error", "detail", "title" })
+            {
+                if (root.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String)
+                {
+                    var text = prop.GetString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return text;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            /* ليس JSON */
+        }
+
+        return null;
     }
 
     public sealed class ParentsSyncPlan

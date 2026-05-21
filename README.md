@@ -1,49 +1,21 @@
-# SCHOOLS-backend
+﻿# SCHOOLS-backend
 
-باكند **منصة المدارس** (.NET 8): Identity + JWT + SQL Server، محاسبة، رواتب، طلاب، صلاحيات الصفحات.
+ط¨ط§ظƒظ†ط¯ **ظ…ظ†طµط© ط§ظ„ظ…ط¯ط§ط±ط³** (.NET 8). ط§ظ„ظ…طµط¯ط± ظ…ظ† `schools222/backend/SchoolsManagement.Api`.
 
-المصدر المزامَن من `schools222/backend/SchoolsManagement.Api`.
+## ظپط­طµ ط§ظ„ظ‚ط§ط¹ط¯ط© ط¨ط¹ط¯ ط§ظ„ظ†ط´ط±
 
-## المتطلبات
+`GET /api/health/db` â€” ظٹط¹ط±ط¶ ط§ظ„ط¬ط¯ط§ظˆظ„طŒ ط§ظ„ظ‡ط¬ط±ط§طھطŒ AspNetUsersطŒ ظˆطھط­ط°ظٹط± ط¥ظ† ظˆظڈط¬ط¯ MySQL ط¨ط§ظ„ط®ط·ط£.
 
-- .NET 8 SDK
-- SQL Server (سلسلة اتصال في `appsettings.json` أو متغيرات البيئة)
+## Railway Variables (SQL Server â€” ظ„ظٹط³ MySQL)
 
-## التشغيل محلياً
+| Variable | Description |
+|----------|-------------|
+| `ConnectionStrings__DefaultConnection` | SQL Server cloud connection string |
+| `Jwt__SecretKey` | 32+ chars |
+| `Jwt__Issuer` | SchoolsManagement.Api |
+| `Jwt__Audience` | SchoolsManagement.Client |
+| `ParentsRoyal__SyncApiKey` | Same as school `appsettings.Secrets.json` |
+| `ParentsRoyal__SchoolId` | e.g. al-rowad-schools |
 
-```bash
-cd src/SchoolsManagement.Api
-dotnet run
-```
+Do **not** use `MYSQL_PUBLIC_URL` for this API.
 
-- Swagger: `http://127.0.0.1:5000/swagger` (أو المنفذ في `launchSettings.json`)
-- فحص: `GET /api/health`
-
-## تسجيل الدخول
-
-`POST /api/auth/login` — يرجع JWT وقائمة `permissions` لصلاحيات الصفحات.
-
-مستخدم Admin (مثل `mansour.admin`) يملك كل الصلاحيات. باقي المستخدمين تُعيَّن صلاحياتهم عبر `PUT /api/permissions/users/{id}`.
-
-## النشر على Railway
-
-1. اربط المستودع [HassainHerhmh/SCHOOLS-backend](https://github.com/HassainHerhmh/SCHOOLS-backend)
-2. Builder: **Dockerfile** من جذر المستودع
-3. متغيرات البيئة (مهم):
-   - `ConnectionStrings__DefaultConnection` — **SQL Server** (ليس MySQL)
-   - `Jwt__SecretKey` و`Jwt__Issuer` و`Jwt__Audience`
-   - `ParentsRoyal__SyncApiKey` — مفتاح مزامنة تطبيق الآباء (نفس المفتاح على جهاز المدرسة)
-   - `ParentsRoyal__SchoolId` — مثل `al-rowad-schools`
-4. بعد النشر: `GET /api/health` و`POST /api/sync/ingest-parents` (مع هيدر `X-Parents-Sync-Key`)
-
-### مزامنة أولياء الأمور
-
-- **المدرسة المحلية** ترسل: `POST /api/sync/publish-to-parents` (مع `ParentsRoyal:RemoteApiUrl` = عنوان Railway)
-- **سيرفر Railway** يستقبل: `POST /api/sync/ingest-parents`
-- **تطبيق الآباء** يقرأ: `GET /api/parents/students?parent_phone=...`
-
-جداول `parents_*` تُنشأ تلقائياً عند أول استقبال (أو نفّذ `Scripts/royal-ensure-all-tables.sql` على SQL Server).
-
-## Angular
-
-في `environment.apiUrl` ضع عنوان الـ API المنشور (مثلاً `https://your-app.up.railway.app`).

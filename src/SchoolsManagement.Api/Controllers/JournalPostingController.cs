@@ -147,8 +147,9 @@ public class JournalPostingController : ControllerBase
                 existing.Amount = amount;
                 existing.EntryDate = entryDate;
                 existing.Description = BuildSalaryDescription(month, year, emp.Name);
-                existing.FromAccountId = transitAccountId.Value;
-                existing.ToAccountId = emp.ChartAccountId!.Value;
+                // استحقاق راتب: الموظف «له» (from)، الوسيط «عليه» (to) — يطابق المكافأة ودفتر الاستحقاق.
+                existing.FromAccountId = emp.ChartAccountId!.Value;
+                existing.ToAccountId = transitAccountId.Value;
                 existing.CurrencyId = currencyId;
                 updated++;
                 continue;
@@ -162,8 +163,8 @@ public class JournalPostingController : ControllerBase
                 EntryNumber = entryNumber,
                 EntryDate = entryDate,
                 Description = BuildSalaryDescription(month, year, emp.Name),
-                FromAccountId = transitAccountId.Value,
-                ToAccountId = emp.ChartAccountId!.Value,
+                FromAccountId = emp.ChartAccountId!.Value,
+                ToAccountId = transitAccountId.Value,
                 CurrencyId = currencyId,
                 Amount = amount,
                 Reference = reference,
@@ -186,6 +187,45 @@ public class JournalPostingController : ControllerBase
             updated_count = updated,
             skipped_count = skipped,
             errors
+        });
+    }
+
+    /// <summary>
+    /// يعكس قيود SAL-* القديمة التي كانت: من الوسيط → الموظف (تظهر عليه بالخطأ).
+    /// </summary>
+    [HttpPost("repair-salary-accrual-directions")]
+    public async Task<ActionResult<object>> RepairSalaryAccrualDirections(CancellationToken ct)
+    {
+        var transitSettings = await _db.TransitAccountsSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == 1, ct);
+        var transitAccountId = transitSettings?.CouponDiscountAccount;
+        if (!transitAccountId.HasValue || transitAccountId.Value <= 0)
+        {
+            return BadRequest(new { message = "لم يُحدد حساب وسيط مرتبات وأجور." });
+        }
+
+        var entries = await _db.VoucherJournalEntries
+            .Where(x => x.Reference != null
+                        && x.Reference.StartsWith(SalaryJournalPostingService.ReferencePrefix)
+                        && x.FromAccountId == transitAccountId.Value)
+            .ToListAsync(ct);
+
+        foreach (var entry in entries)
+        {
+            (entry.FromAccountId, entry.ToAccountId) = (entry.ToAccountId, entry.FromAccountId);
+        }
+
+        if (entries.Count > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return Ok(new
+        {
+            repaired_count = entries.Count,
+            message = entries.Count == 0
+                ? "لا توجد قيود استحقاق باتجاه قديم."
+                : "تم تصحيح اتجاه قيود الاستحقاق."
         });
     }
 

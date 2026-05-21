@@ -138,9 +138,31 @@ public class SyncController : ControllerBase
         }
         catch (Exception ex)
         {
-            SetProgress(sessionId, 0, 0, "failed", "حدث خطأ أثناء المزامنة", true, true, ex.Message);
-            return StatusCode(500, new { message = "حدث خطأ أثناء المزامنة", error = ex.Message, session_id = sessionId });
+            var detail = BuildSyncErrorDetail(ex);
+            SetProgress(sessionId, 0, 0, "failed", detail, true, true, detail);
+            return StatusCode(500, new
+            {
+                message = detail,
+                error = detail,
+                detail,
+                session_id = sessionId
+            });
         }
+    }
+
+    private static string BuildSyncErrorDetail(Exception ex)
+    {
+        var parts = new List<string>();
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            if (!string.IsNullOrWhiteSpace(current.Message)
+                && !parts.Contains(current.Message, StringComparer.Ordinal))
+            {
+                parts.Add(current.Message);
+            }
+        }
+
+        return parts.Count > 0 ? string.Join(" ← ", parts) : "حدث خطأ أثناء المزامنة";
     }
 
     private bool ValidateParentsSyncKey()
