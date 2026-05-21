@@ -8,19 +8,27 @@ namespace SchoolsManagement.Api.Services;
 
 public sealed class DatabaseHealthChecker
 {
-    private static readonly string[] KeyTables =
+    private static readonly string[] SqlServerKeyTables =
     [
         "AspNetUsers",
         "AspNetRoles",
         "students",
         "classes",
         "sections",
-        "parents_student_summaries",
-        "parents_class_publishes",
-        "parents_section_publishes",
-        "parents_attendance_summaries",
+        "parents_students_summary",
+        "parents_classes",
+        "parents_sections",
+        "parents_attendance_summary",
         "sync_checkpoints",
         "__EFMigrationsHistory"
+    ];
+
+    private static readonly string[] MySqlRoyalKeyTables =
+    [
+        "parents_students_summary",
+        "parents_classes",
+        "parents_sections",
+        "parents_attendance_summary"
     ];
 
     public async Task<DatabaseHealthReport> CheckAsync(
@@ -38,7 +46,7 @@ public sealed class DatabaseHealthChecker
 
         if (isMySql && ConnectionStringResolver.HasMysqlEnvVars())
         {
-            report.Warnings.Add("Railway MySQL — الجداول تُنشأ تلقائياً عند أول تشغيل (EnsureCreated).");
+            report.Warnings.Add("Railway MySQL — جداول parents_* الأربعة فقط (بدون نظام المدارس الكامل).");
         }
 
         try
@@ -106,17 +114,24 @@ public sealed class DatabaseHealthChecker
 
             report.Tables = tables.Select(t => $"{t.Schema}.{t.Name}").ToList();
 
-            foreach (var key in KeyTables)
+            var keyTables = isMySql ? MySqlRoyalKeyTables : SqlServerKeyTables;
+            foreach (var key in keyTables)
             {
                 var exists = tables.Any(t =>
                     string.Equals(t.Name, key, StringComparison.OrdinalIgnoreCase));
                 int? count = null;
                 if (exists)
                 {
-                    count = await TryCountTableAsync(db, key, cancellationToken);
+                    count = await TryCountTableAsync(db, key, isMySql, cancellationToken);
                 }
 
                 report.KeyTables[key] = new KeyTableStatus { Exists = exists, RowCount = count };
+            }
+
+            if (isMySql && report.TableCount > MySqlRoyalKeyTables.Length)
+            {
+                report.Warnings.Add(
+                    $"يوجد {report.TableCount} جدولاً (منها جداول قديمة من EnsureCreated). يمكن حذفها يدوياً من MySQL — المطلوب فقط parents_*.");
             }
 
             if (!isMySql)
@@ -126,23 +141,32 @@ public sealed class DatabaseHealthChecker
                 report.MigrationsAppliedCount = report.AppliedMigrations.Count;
                 report.MigrationsPendingCount = report.PendingMigrations.Count;
             }
-            else
-            {
-                report.Warnings.Add("MySQL: schema via EnsureCreated (لا EF migrations SQL Server).");
-            }
-
             if (report.TableCount == 0)
             {
-                report.Warnings.Add("لا توجد جداول — شغّل التطبيق مرة ليطبّق EF Migrate أو نفّذ Scripts/royal-ensure-all-tables.sql");
+                report.Warnings.Add(isMySql
+                    ? "لا توجد جداول — أعد تشغيل API على Railway لإنشاء parents_*."
+                    : "لا توجد جداول — شغّل التطبيق مرة ليطبّق EF Migrate.");
             }
             else if (report.MigrationsPendingCount > 0)
             {
                 report.Warnings.Add($"هناك {report.MigrationsPendingCount} هجرة لم تُطبَّق بعد.");
             }
 
-            if (report.KeyTables.TryGetValue("AspNetUsers", out var users) && users.Exists && users.RowCount == 0)
+            if (!isMySql
+                && report.KeyTables.TryGetValue("AspNetUsers", out var users)
+                && users.Exists
+                && users.RowCount == 0)
             {
                 report.Warnings.Add("جدول AspNetUsers موجود لكن بدون مستخدمين — سجّل دخول أو انسخ قاعدة من .bak");
+            }
+
+            if (isMySql
+                && report.KeyTables.TryGetValue("parents_students_summary", out var royalStudents)
+                && royalStudents.Exists
+                && royalStudents.RowCount == 0)
+            {
+                report.Warnings.Add(
+                    "جدول parents_students_summary فارغ — من المدرسة المحلية: مزامنة مع تفعيل «إعادة رفع الكامل».");
             }
 
             report.Status = report.Warnings.Count > 0 && report.TableCount == 0 ? "warning" : "ok";
@@ -186,28 +210,32 @@ public sealed class DatabaseHealthChecker
     private static async Task<int?> TryCountTableAsync(
         ApplicationDbContext db,
         string tableName,
+        bool isMySql,
         CancellationToken cancellationToken)
     {
-        if (!KeyTables.Contains(tableName, StringComparer.OrdinalIgnoreCase))
+        var allowed = isMySql ? MySqlRoyalKeyTables : SqlServerKeyTables;
+        if (!allowed.Contains(tableName, StringComparer.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        var sql = tableName switch
-        {
-            "AspNetUsers" => "SELECT COUNT(*) AS [Value] FROM [AspNetUsers]",
-            "AspNetRoles" => "SELECT COUNT(*) AS [Value] FROM [AspNetRoles]",
-            "students" => "SELECT COUNT(*) AS [Value] FROM [students]",
-            "classes" => "SELECT COUNT(*) AS [Value] FROM [classes]",
-            "sections" => "SELECT COUNT(*) AS [Value] FROM [sections]",
-            "parents_student_summaries" => "SELECT COUNT(*) AS [Value] FROM [parents_student_summaries]",
-            "parents_class_publishes" => "SELECT COUNT(*) AS [Value] FROM [parents_class_publishes]",
-            "parents_section_publishes" => "SELECT COUNT(*) AS [Value] FROM [parents_section_publishes]",
-            "parents_attendance_summaries" => "SELECT COUNT(*) AS [Value] FROM [parents_attendance_summaries]",
-            "sync_checkpoints" => "SELECT COUNT(*) AS [Value] FROM [sync_checkpoints]",
-            "__EFMigrationsHistory" => "SELECT COUNT(*) AS [Value] FROM [__EFMigrationsHistory]",
-            _ => null
-        };
+        var sql = isMySql
+            ? $"SELECT COUNT(*) AS `Value` FROM `{tableName}`"
+            : tableName switch
+            {
+                "AspNetUsers" => "SELECT COUNT(*) AS [Value] FROM [AspNetUsers]",
+                "AspNetRoles" => "SELECT COUNT(*) AS [Value] FROM [AspNetRoles]",
+                "students" => "SELECT COUNT(*) AS [Value] FROM [students]",
+                "classes" => "SELECT COUNT(*) AS [Value] FROM [classes]",
+                "sections" => "SELECT COUNT(*) AS [Value] FROM [sections]",
+                "parents_students_summary" => "SELECT COUNT(*) AS [Value] FROM [parents_students_summary]",
+                "parents_classes" => "SELECT COUNT(*) AS [Value] FROM [parents_classes]",
+                "parents_sections" => "SELECT COUNT(*) AS [Value] FROM [parents_sections]",
+                "parents_attendance_summary" => "SELECT COUNT(*) AS [Value] FROM [parents_attendance_summary]",
+                "sync_checkpoints" => "SELECT COUNT(*) AS [Value] FROM [sync_checkpoints]",
+                "__EFMigrationsHistory" => "SELECT COUNT(*) AS [Value] FROM [__EFMigrationsHistory]",
+                _ => null
+            };
 
         if (sql is null)
         {

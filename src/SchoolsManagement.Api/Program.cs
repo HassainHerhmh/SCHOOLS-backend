@@ -250,18 +250,25 @@ using (var scope = app.Services.CreateScope())
         .GetAwaiter()
         .GetResult();
 
-    try
+    if (!dbConfig.IsMySql)
     {
-        IdentityDataSeeder.SeedAsync(
-                scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>(),
-                scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>(),
-                scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("IdentitySeed"))
-            .GetAwaiter()
-            .GetResult();
+        try
+        {
+            IdentityDataSeeder.SeedAsync(
+                    scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>(),
+                    scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>(),
+                    scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("IdentitySeed"))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "فشل تهيئة المستخدمين والأدوار الافتراضية.");
+        }
     }
-    catch (Exception ex)
+    else
     {
-        app.Logger.LogError(ex, "فشل تهيئة المستخدمين والأدوار الافتراضية.");
+        app.Logger.LogInformation("MySQL (رويال): تخطي تهيئة مستخدمي النظام — جداول parents_* فقط.");
     }
 }
 

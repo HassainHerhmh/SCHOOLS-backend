@@ -41,9 +41,11 @@ public class SyncController : ControllerBase
 
     /// <summary>عدد الطلاب النشطين المعروض في واجهة المزامنة (شريط التقدّم).</summary>
     [HttpGet("parents-sync-preview")]
-    public async Task<IActionResult> ParentsSyncPreview(CancellationToken cancellationToken)
+    public async Task<IActionResult> ParentsSyncPreview(
+        [FromQuery] bool force = false,
+        CancellationToken cancellationToken = default)
     {
-        var plan = await BuildParentsSyncPlan(cancellationToken);
+        var plan = await BuildParentsSyncPlan(cancellationToken, force);
         return Ok(new
         {
             student_count = plan.TotalItems,
@@ -107,12 +109,16 @@ public class SyncController : ControllerBase
 
         try
         {
-            var plan = await BuildParentsSyncPlan(cancellationToken);
+            var forceFull = request?.Force == true;
+            var plan = await BuildParentsSyncPlan(cancellationToken, forceFull);
 
             if (!plan.HasChanges)
             {
-                SetProgress(sessionId, 0, 0, "completed", "لا توجد تعديلات جديدة للمزامنة.", true);
-                return Ok(new { message = "لا توجد تعديلات جديدة للمزامنة.", count = 0, session_id = sessionId });
+                var noChangesMsg = forceFull
+                    ? "لا يوجد طلاب نشطون أو بيانات للرفع."
+                    : "لا توجد تعديلات جديدة للمزامنة. إذا أفرغت قاعدة رويال استخدم force=true لإعادة رفع الكل.";
+                SetProgress(sessionId, 0, 0, "completed", noChangesMsg, true);
+                return Ok(new { message = noChangesMsg, count = 0, session_id = sessionId, force = forceFull });
             }
 
             var totalItems = Math.Max(1, plan.TotalItems);
@@ -211,6 +217,9 @@ public class SyncController : ControllerBase
     public sealed class ParentsSyncRequest
     {
         public string? SessionId { get; set; }
+
+        /// <summary>تجاهل نقاط التفتيش ورفع كل الطلاب النشطين والصفوف والشعب والحضور (بعد تفريغ رويال).</summary>
+        public bool Force { get; set; }
     }
 
     public sealed class ParentsSyncProgressState
@@ -229,24 +238,34 @@ public class SyncController : ControllerBase
         public string? Error { get; set; }
     }
 
-    private async Task<ParentsSyncPlan> BuildParentsSyncPlan(CancellationToken cancellationToken)
+    private async Task<ParentsSyncPlan> BuildParentsSyncPlan(
+        CancellationToken cancellationToken,
+        bool forceFullSync = false)
     {
         await EnsureSyncCheckpointsTable(cancellationToken);
 
         var checkpointAt = DateTimeOffset.UtcNow;
-        var checkpoints = await _db.SyncCheckpoints
-            .AsNoTracking()
-            .ToDictionaryAsync(x => x.Key, x => x.SyncedAt, cancellationToken);
+        Dictionary<string, DateTimeOffset> checkpoints;
+        if (forceFullSync)
+        {
+            checkpoints = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+        }
+        else
+        {
+            checkpoints = await _db.SyncCheckpoints
+                .AsNoTracking()
+                .ToDictionaryAsync(x => x.Key, x => x.SyncedAt, cancellationToken);
+        }
 
         checkpoints.TryGetValue(StudentsCheckpointKey, out var studentsSince);
         checkpoints.TryGetValue(ClassesCheckpointKey, out var classesSince);
         checkpoints.TryGetValue(SectionsCheckpointKey, out var sectionsSince);
         checkpoints.TryGetValue(AttendanceCheckpointKey, out var attendanceSince);
 
-        var hasStudentsCheckpoint = checkpoints.ContainsKey(StudentsCheckpointKey);
-        var hasClassesCheckpoint = checkpoints.ContainsKey(ClassesCheckpointKey);
-        var hasSectionsCheckpoint = checkpoints.ContainsKey(SectionsCheckpointKey);
-        var hasAttendanceCheckpoint = checkpoints.ContainsKey(AttendanceCheckpointKey);
+        var hasStudentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(StudentsCheckpointKey);
+        var hasClassesCheckpoint = !forceFullSync && checkpoints.ContainsKey(ClassesCheckpointKey);
+        var hasSectionsCheckpoint = !forceFullSync && checkpoints.ContainsKey(SectionsCheckpointKey);
+        var hasAttendanceCheckpoint = !forceFullSync && checkpoints.ContainsKey(AttendanceCheckpointKey);
 
         var changedStudents = hasStudentsCheckpoint
             ? await _db.StudentRecords.CountAsync(s =>
