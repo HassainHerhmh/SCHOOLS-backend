@@ -47,6 +47,30 @@ public sealed class ErrorLestLogger
         }
     }
 
+    /// <summary>تسجيل خطأ API (400/تحقق) دون استثناء كامل.</summary>
+    public void LogApiError(string message, HttpContext? context = null, string? detail = null)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        try
+        {
+            var ex = new InvalidOperationException(
+                string.IsNullOrWhiteSpace(detail) ? message.Trim() : $"{message.Trim()} | {detail.Trim()}");
+            var entry = BuildEntry(ex, context);
+            lock (_writeLock)
+            {
+                File.AppendAllText(_logFilePath, entry, Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
     private static string BuildEntry(Exception exception, HttpContext? context)
     {
         var sb = new StringBuilder();

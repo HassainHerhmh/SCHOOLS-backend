@@ -1,23 +1,6 @@
-## .NET
-bin/
-obj/
-artifacts-api-build-check/
-out/
+**/bin/
+**/obj/
+**/artifacts-api-build-check/
 *.user
-*.suo
-*.cache
-*.dll
-*.pdb
-*.log
-.vs/
-.idea/
-
-## Secrets — لا ترفع أبداً
-appsettings.*.local.json
 appsettings.Secrets.json
-**/Config/مدارس-الرواد-ParentsRoyal-Railway.txt
-**/secrets.json
-
-## OS
-Thumbs.db
-.DS_Store
+ErrorLest.txt

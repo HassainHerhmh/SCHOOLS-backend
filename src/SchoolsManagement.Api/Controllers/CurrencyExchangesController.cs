@@ -3,25 +3,34 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.Accounting;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
 [ApiController]
 [Route("api/currency-exchanges")]
-[AllowAnonymous]
+[Authorize]
 public class CurrencyExchangesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly AccountingCurrentUserService _currentUser;
+    private readonly VoucherUserNameEnricher _userNameEnricher;
 
-    public CurrencyExchangesController(ApplicationDbContext db)
+    public CurrencyExchangesController(
+        ApplicationDbContext db,
+        AccountingCurrentUserService currentUser,
+        VoucherUserNameEnricher userNameEnricher)
     {
         _db = db;
+        _currentUser = currentUser;
+        _userNameEnricher = userNameEnricher;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<CurrencyExchangeRecord>>> List(CancellationToken ct)
     {
         var list = await _db.CurrencyExchanges.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync(list, _userNameEnricher, ct);
         return Ok(list);
     }
 
@@ -41,9 +50,10 @@ public class CurrencyExchangesController : ControllerBase
             return Conflict(new { message = "معرّف العملية مستخدم مسبقاً." });
         }
 
-        var entity = MapFromBody(body, id);
+        var entity = await MapFromBodyAsync(body, id, ct);
         _db.CurrencyExchanges.Add(entity);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return CreatedAtAction(nameof(List), entity);
     }
 
@@ -56,8 +66,9 @@ public class CurrencyExchangesController : ControllerBase
             return NotFound();
         }
 
-        ApplyBody(entity, body);
+        await ApplyBodyAsync(entity, body, ct);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return Ok(entity);
     }
 
@@ -81,10 +92,10 @@ public class CurrencyExchangesController : ControllerBase
         return max + 1;
     }
 
-    private static CurrencyExchangeRecord MapFromBody(CurrencyExchangeRecord body, int id)
+    private async Task<CurrencyExchangeRecord> MapFromBodyAsync(CurrencyExchangeRecord body, int id, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        return new CurrencyExchangeRecord
+        var entity = new CurrencyExchangeRecord
         {
             Id = id,
             Reference = body.Reference?.Trim() ?? "",
@@ -100,13 +111,14 @@ public class CurrencyExchangesController : ControllerBase
             ToAccountId = body.ToAccountId,
             CustomerName = body.CustomerName?.Trim() ?? "",
             Notes = body.Notes ?? "",
-            CreatedBy = body.CreatedBy,
             BranchId = body.BranchId,
             CreatedAt = body.CreatedAt ?? now
         };
+        await AccountingVoucherAuditHelper.ApplyOnCreateAsync(entity, body, _currentUser, ct);
+        return entity;
     }
 
-    private static void ApplyBody(CurrencyExchangeRecord entity, CurrencyExchangeRecord body)
+    private async Task ApplyBodyAsync(CurrencyExchangeRecord entity, CurrencyExchangeRecord body, CancellationToken ct)
     {
         entity.Reference = body.Reference?.Trim() ?? entity.Reference;
         entity.ExchangeDate = body.ExchangeDate == default ? entity.ExchangeDate : body.ExchangeDate;
@@ -121,8 +133,8 @@ public class CurrencyExchangesController : ControllerBase
         entity.ToAccountId = body.ToAccountId;
         entity.CustomerName = body.CustomerName?.Trim() ?? "";
         entity.Notes = body.Notes ?? "";
-        entity.CreatedBy = body.CreatedBy;
         entity.BranchId = body.BranchId;
         entity.CreatedAt = body.CreatedAt ?? entity.CreatedAt;
+        await AccountingVoucherAuditHelper.ApplyOnUpdateAsync(entity, body, _currentUser, ct);
     }
 }

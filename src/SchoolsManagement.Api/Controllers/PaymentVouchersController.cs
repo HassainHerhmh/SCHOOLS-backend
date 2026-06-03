@@ -3,25 +3,34 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.Accounting;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
 [ApiController]
 [Route("api/payment-vouchers")]
-[AllowAnonymous]
+[Authorize]
 public class PaymentVouchersController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly AccountingCurrentUserService _currentUser;
+    private readonly VoucherUserNameEnricher _userNameEnricher;
 
-    public PaymentVouchersController(ApplicationDbContext db)
+    public PaymentVouchersController(
+        ApplicationDbContext db,
+        AccountingCurrentUserService currentUser,
+        VoucherUserNameEnricher userNameEnricher)
     {
         _db = db;
+        _currentUser = currentUser;
+        _userNameEnricher = userNameEnricher;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<PaymentVoucherRecord>>> List(CancellationToken ct)
     {
         var list = await _db.PaymentVouchers.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync(list, _userNameEnricher, ct);
         return Ok(list);
     }
 
@@ -41,9 +50,10 @@ public class PaymentVouchersController : ControllerBase
             return Conflict(new { message = "معرّف السند مستخدم مسبقاً." });
         }
 
-        var entity = MapFromBody(body, id);
+        var entity = await MapFromBodyAsync(body, id, ct);
         _db.PaymentVouchers.Add(entity);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return CreatedAtAction(nameof(List), entity);
     }
 
@@ -56,8 +66,9 @@ public class PaymentVouchersController : ControllerBase
             return NotFound();
         }
 
-        ApplyBody(entity, body);
+        await ApplyBodyAsync(entity, body, ct);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return Ok(entity);
     }
 
@@ -81,10 +92,10 @@ public class PaymentVouchersController : ControllerBase
         return max + 1;
     }
 
-    private static PaymentVoucherRecord MapFromBody(PaymentVoucherRecord body, int id)
+    private async Task<PaymentVoucherRecord> MapFromBodyAsync(PaymentVoucherRecord body, int id, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        return new PaymentVoucherRecord
+        var entity = new PaymentVoucherRecord
         {
             Id = id,
             VoucherNo = body.VoucherNo?.Trim() ?? "",
@@ -101,13 +112,14 @@ public class PaymentVouchersController : ControllerBase
             JournalTypeId = body.JournalTypeId,
             Notes = body.Notes ?? "",
             Handling = body.Handling ?? "",
-            CreatedBy = body.CreatedBy,
             BranchId = body.BranchId,
             CreatedAt = body.CreatedAt ?? now
         };
+        await AccountingVoucherAuditHelper.ApplyOnCreateAsync(entity, body, _currentUser, ct);
+        return entity;
     }
 
-    private static void ApplyBody(PaymentVoucherRecord entity, PaymentVoucherRecord body)
+    private async Task ApplyBodyAsync(PaymentVoucherRecord entity, PaymentVoucherRecord body, CancellationToken ct)
     {
         entity.VoucherNo = body.VoucherNo?.Trim() ?? entity.VoucherNo;
         entity.VoucherDate = body.VoucherDate == default ? entity.VoucherDate : body.VoucherDate;
@@ -123,8 +135,8 @@ public class PaymentVouchersController : ControllerBase
         entity.JournalTypeId = body.JournalTypeId;
         entity.Notes = body.Notes ?? "";
         entity.Handling = body.Handling ?? "";
-        entity.CreatedBy = body.CreatedBy;
         entity.BranchId = body.BranchId;
         entity.CreatedAt = body.CreatedAt ?? entity.CreatedAt;
+        await AccountingVoucherAuditHelper.ApplyOnUpdateAsync(entity, body, _currentUser, ct);
     }
 }

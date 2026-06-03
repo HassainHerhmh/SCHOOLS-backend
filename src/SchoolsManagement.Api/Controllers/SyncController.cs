@@ -130,7 +130,7 @@ public class SyncController : ControllerBase
         if (!_remotePublisher.IsConfigured())
         {
             const string configMsg =
-                "لم يُضبط سيرفر رويال الخارجي. أضف ParentsRoyal:RemoteApiUrl و ParentsRoyal:SyncApiKey في appsettings.Secrets.json على جهاز المدرسة.";
+                "لم يُضبط السيرفر الخارجي. أضف ParentsRoyal:RemoteApiUrl و ParentsRoyal:SyncApiKey في appsettings.Secrets.json على جهاز المدرسة.";
             SetProgress(sessionId, 0, 0, "failed", configMsg, true, true);
             return BadRequest(new { message = configMsg, session_id = sessionId });
         }
@@ -144,13 +144,13 @@ public class SyncController : ControllerBase
             {
                 var noChangesMsg = forceFull
                     ? "لا يوجد طلاب نشطون أو بيانات للرفع."
-                    : "لا توجد تعديلات جديدة للمزامنة. إذا أفرغت قاعدة رويال استخدم force=true لإعادة رفع الكل.";
+                    : "لا توجد تعديلات جديدة للمزامنة. إذا أفرغت قاعدة التطبيق استخدم force=true لإعادة رفع الكل.";
                 SetProgress(sessionId, 0, 0, "completed", noChangesMsg, true);
                 return Ok(new { message = noChangesMsg, count = 0, session_id = sessionId, force = forceFull });
             }
 
             var totalItems = Math.Max(1, plan.TotalItems);
-            SetProgress(sessionId, totalItems, 0, "uploading", "جاري الرفع إلى سيرفر رويال الخارجي", itemLabel: plan.ItemLabel);
+            SetProgress(sessionId, totalItems, 0, "uploading", "جاري الرفع إلى السيرفر الخارجي", itemLabel: plan.ItemLabel);
 
             var uploaded = await _remotePublisher.PublishAsync(
                 plan,
@@ -160,7 +160,7 @@ public class SyncController : ControllerBase
                 },
                 cancellationToken);
 
-            SetProgress(sessionId, totalItems, totalItems, "uploading", "جاري التحقق من وصول البيانات إلى سيرفر رويال", itemLabel: plan.ItemLabel);
+            SetProgress(sessionId, totalItems, totalItems, "uploading", "جاري التحقق من وصول البيانات إلى السيرفر الخارجي", itemLabel: plan.ItemLabel);
 
             ParentsRemoteDataCounts? remoteCounts;
             try
@@ -172,7 +172,7 @@ public class SyncController : ControllerBase
                 remoteCounts = null;
                 var outcome = ParentsSyncVerification.Evaluate(plan, uploaded, null);
                 outcome.Success = false;
-                outcome.FailureReason = $"تعذر التحقق من سيرفر رويال: {verifyEx.Message}";
+                outcome.FailureReason = $"تعذر التحقق من السيرفر الخارجي: {verifyEx.Message}";
                 outcome.Message = "فشل التحقق بعد الرفع.";
                 SetProgress(sessionId, totalItems, totalItems, "failed", outcome.FailureReason, true, true, outcome.FailureReason);
                 return BadRequest(new

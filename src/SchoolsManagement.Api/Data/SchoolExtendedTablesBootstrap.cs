@@ -145,6 +145,35 @@ IF COL_LENGTH(N'dbo.classes', N'default_min_pass_score') IS NULL
 BEGIN
     ALTER TABLE dbo.classes ADD default_min_pass_score decimal(18,2) NOT NULL CONSTRAINT DF_classes_min_pass DEFAULT ((50));
 END
+
+IF OBJECT_ID(N'dbo.class_schedule_settings', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.class_schedule_settings (
+        id int NOT NULL CONSTRAINT PK_class_schedule_settings PRIMARY KEY,
+        day_name nvarchar(50) NOT NULL CONSTRAINT DF_class_schedule_settings_day DEFAULT (N'الأحد'),
+        periods_count int NOT NULL CONSTRAINT DF_class_schedule_settings_periods DEFAULT ((6)),
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_class_schedule_settings_updated DEFAULT (sysdatetimeoffset())
+    );
+    INSERT INTO dbo.class_schedule_settings (id, day_name, periods_count, updated_at)
+    VALUES (1, N'الأحد', 6, sysdatetimeoffset());
+END
+
+IF OBJECT_ID(N'dbo.class_schedule_periods', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.class_schedule_periods (
+        id uniqueidentifier NOT NULL CONSTRAINT PK_class_schedule_periods PRIMARY KEY,
+        class_id uniqueidentifier NOT NULL,
+        section_id uniqueidentifier NOT NULL,
+        day_name nvarchar(50) NOT NULL,
+        period_number int NOT NULL,
+        subject_id uniqueidentifier NULL,
+        duration_minutes int NOT NULL CONSTRAINT DF_class_schedule_duration DEFAULT ((45)),
+        created_at datetimeoffset(7) NOT NULL CONSTRAINT DF_class_schedule_created DEFAULT (sysdatetimeoffset()),
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_class_schedule_period_updated DEFAULT (sysdatetimeoffset()),
+        CONSTRAINT UQ_class_schedule_slot UNIQUE (class_id, section_id, day_name, period_number)
+    );
+    CREATE INDEX IX_class_schedule_periods_class ON dbo.class_schedule_periods(class_id, day_name);
+END
 """;
 
     public static void EnsureExists(ApplicationDbContext db) =>

@@ -3,25 +3,34 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.Accounting;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
 [ApiController]
 [Route("api/journal-entries")]
-[AllowAnonymous]
+[Authorize]
 public class JournalEntriesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly AccountingCurrentUserService _currentUser;
+    private readonly VoucherUserNameEnricher _userNameEnricher;
 
-    public JournalEntriesController(ApplicationDbContext db)
+    public JournalEntriesController(
+        ApplicationDbContext db,
+        AccountingCurrentUserService currentUser,
+        VoucherUserNameEnricher userNameEnricher)
     {
         _db = db;
+        _currentUser = currentUser;
+        _userNameEnricher = userNameEnricher;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<VoucherJournalEntryRecord>>> List(CancellationToken ct)
     {
         var list = await _db.VoucherJournalEntries.AsNoTracking().OrderByDescending(x => x.EntryNumber).ToListAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync(list, _userNameEnricher, ct);
         return Ok(list);
     }
 
@@ -35,7 +44,13 @@ public class JournalEntriesController : ControllerBase
         }
 
         var row = await _db.VoucherJournalEntries.AsNoTracking().FirstOrDefaultAsync(x => x.Reference == r, ct);
-        return row is null ? NotFound() : Ok(row);
+        if (row is null)
+        {
+            return NotFound();
+        }
+
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([row], _userNameEnricher, ct);
+        return Ok(row);
     }
 
     [HttpGet("next-entry-number")]
@@ -68,11 +83,11 @@ public class JournalEntriesController : ControllerBase
             CurrencyId = body.CurrencyId,
             Amount = body.Amount,
             Reference = body.Reference ?? "",
-            CreatedBy = body.CreatedBy,
             BranchId = body.BranchId,
             CreatedAt = body.CreatedAt ?? now,
             PostedAt = body.PostedAt ?? now
         };
+        await AccountingVoucherAuditHelper.ApplyOnCreateAsync(entity, body, _currentUser, ct);
 
         if (!string.IsNullOrWhiteSpace(entity.Reference) &&
             await _db.VoucherJournalEntries.AnyAsync(x => x.Reference == entity.Reference, ct))
@@ -82,6 +97,7 @@ public class JournalEntriesController : ControllerBase
 
         _db.VoucherJournalEntries.Add(entity);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return CreatedAtAction(nameof(List), new { }, entity);
     }
 
@@ -108,10 +124,11 @@ public class JournalEntriesController : ControllerBase
         entity.CurrencyId = body.CurrencyId;
         entity.Amount = body.Amount;
         entity.Reference = body.Reference ?? "";
-        entity.CreatedBy = body.CreatedBy;
         entity.BranchId = body.BranchId;
         entity.CreatedAt = body.CreatedAt ?? entity.CreatedAt;
+        await AccountingVoucherAuditHelper.ApplyOnUpdateAsync(entity, body, _currentUser, ct);
         await _db.SaveChangesAsync(ct);
+        await AccountingVoucherAuditHelper.EnrichDisplayNamesAsync([entity], _userNameEnricher, ct);
         return Ok(entity);
     }
 

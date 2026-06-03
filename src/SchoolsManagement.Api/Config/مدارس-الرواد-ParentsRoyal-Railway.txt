@@ -1,0 +1,31 @@
+مدارس الرواد الأهلية — مفتاح مزامنة تطبيق أولياء الأمور (رويال / Railway)
+================================================================================
+
+انسخ القيم التالية إلى Railway → مشروع schools-backend-production → Variables
+
+ParentsRoyal__SyncApiKey
+AlRowadRoyal_CFUMsCKp-dmpH2WOpk1AvI7Y8C623ndHmuAJDUJBukI
+
+ParentsRoyal__SchoolId
+al-rowad-schools
+
+(اختياري على السيرفر الخارجي — RemoteApiUrl يُترك فارغاً هناك)
+
+--------------------------------------------------------------------------------
+جهاز المدرسة المحلي
+--------------------------------------------------------------------------------
+الملف: backend/SchoolsManagement.Api/appsettings.Secrets.json
+(يُحمّل تلقائياً مع الـ API — أعد تشغيل السيرفر بعد الحفظ)
+
+RemoteApiUrl: https://schools-backend-production.up.railway.app
+SyncApiKey:   AlRowadRoyal_CFUMsCKp-dmpH2WOpk1AvI7Y8C623ndHmuAJDUJBukI
+SchoolId:     al-rowad-schools
+
+--------------------------------------------------------------------------------
+تحقق
+--------------------------------------------------------------------------------
+1) Railway: بعد إضافة المتغيرات → Redeploy
+2) المدرسة: أعد تشغيل API ثم المحاسبة → إعدادات عامة → تحديث بيانات تطبيق الآباء
+3) الهيدر عند الرفع: X-Parents-Sync-Key = نفس المفتاح أعلاه
+
+⚠ لا ترفع هذا الملف إلى GitHub — للاستخدام المحلي و Railway فقط.

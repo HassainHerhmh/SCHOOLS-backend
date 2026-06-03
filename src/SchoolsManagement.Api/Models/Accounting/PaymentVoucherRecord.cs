@@ -1,10 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-
 namespace SchoolsManagement.Api.Models.Accounting;
 
 [Table("payment_vouchers")]
-public class PaymentVoucherRecord
+public class PaymentVoucherRecord : IAccountingCreatedByAudit
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
@@ -60,6 +59,14 @@ public class PaymentVoucherRecord
 
     [Column("created_by")]
     public int? CreatedBy { get; set; }
+
+    [Column("created_by_user_id")]
+    [MaxLength(450)]
+    public string? CreatedByUserId { get; set; }
+
+    [Column("created_by_name")]
+    [MaxLength(300)]
+    public string? CreatedByName { get; set; }
 
     [Column("branch_id")]
     public int? BranchId { get; set; }

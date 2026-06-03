@@ -1,11 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-
 namespace SchoolsManagement.Api.Models.Accounting;
 
 /// <summary>قيد يومية مرتبط بسندات القبض/الصرف (جدول journal_entries في Supabase سابقاً).</summary>
 [Table("journal_entries")]
-public class VoucherJournalEntryRecord
+public class VoucherJournalEntryRecord : IAccountingCreatedByAudit
 {
     [Key]
     public Guid Id { get; set; }
@@ -38,6 +37,14 @@ public class VoucherJournalEntryRecord
 
     [Column("created_by")]
     public int? CreatedBy { get; set; }
+
+    [Column("created_by_user_id")]
+    [MaxLength(450)]
+    public string? CreatedByUserId { get; set; }
+
+    [Column("created_by_name")]
+    [MaxLength(300)]
+    public string? CreatedByName { get; set; }
 
     [Column("branch_id")]
     public int? BranchId { get; set; }

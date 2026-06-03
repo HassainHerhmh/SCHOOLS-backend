@@ -55,7 +55,7 @@ public class ParentsRemoteSyncPublisher
         if (string.IsNullOrWhiteSpace(remoteUrl) || string.IsNullOrWhiteSpace(syncKey))
         {
             throw new InvalidOperationException(
-                "لم يُضبط سيرفر رويال الخارجي. أضف ParentsRoyal:RemoteApiUrl و ParentsRoyal:SyncApiKey في appsettings.Secrets.json");
+                "لم يُضبط السيرفر الخارجي. أضف ParentsRoyal:RemoteApiUrl و ParentsRoyal:SyncApiKey في appsettings.Secrets.json");
         }
 
         var client = _httpClientFactory.CreateClient();
@@ -67,7 +67,7 @@ public class ParentsRemoteSyncPublisher
 
         if (plan.SyncStudents)
         {
-            onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع بيانات الطلاب إلى سيرفر رويال");
+            onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع بيانات الطلاب إلى السيرفر الخارجي");
             var students = await LoadStudentsAsync(plan, cancellationToken);
             var chunkSize = 40;
             for (var i = 0; i < students.Count; i += chunkSize)
@@ -85,13 +85,13 @@ public class ParentsRemoteSyncPublisher
                 if (chunk.Count > 0 && result.Students <= 0)
                 {
                     throw new InvalidOperationException(
-                        $"سيرفر رويال لم يحفظ دفعة الطلاب ({chunk.Count} سجل) — تحقق من جدول parents_students_summary على MySQL.");
+                        $"السيرفر الخارجي لم يحفظ دفعة الطلاب ({chunk.Count} سجل) — تحقق من جدول parents_students_summary على MySQL.");
                 }
 
                 if (reportChunk.Count > 0 && result.StudentReports <= 0)
                 {
                     throw new InvalidOperationException(
-                        $"سيرفر رويال لم يحفظ تقارير الطلاب ({reportChunk.Count} سجل) — تحقق من جدول parents_student_reports على MySQL.");
+                        $"السيرفر الخارجي لم يحفظ تقارير الطلاب ({reportChunk.Count} سجل) — تحقق من جدول parents_student_reports على MySQL.");
                 }
 
                 uploadedItems += chunk.Count;
@@ -113,7 +113,7 @@ public class ParentsRemoteSyncPublisher
                 aggregate.Classes += result.Classes;
                 if (classes.Count > 0 && result.Classes <= 0)
                 {
-                    throw new InvalidOperationException("سيرفر رويال لم يحفظ بيانات الصفوف.");
+                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ بيانات الصفوف.");
                 }
 
                 uploadedItems += plan.ChangedClasses;
@@ -135,7 +135,7 @@ public class ParentsRemoteSyncPublisher
                 aggregate.Sections += result.Sections;
                 if (sections.Count > 0 && result.Sections <= 0)
                 {
-                    throw new InvalidOperationException("سيرفر رويال لم يحفظ بيانات الشعب.");
+                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ بيانات الشعب.");
                 }
 
                 uploadedItems += plan.ChangedSections;
@@ -159,7 +159,7 @@ public class ParentsRemoteSyncPublisher
                 aggregate.Attendance += result.Attendance;
                 if (chunk.Count > 0 && result.Attendance <= 0)
                 {
-                    throw new InvalidOperationException("سيرفر رويال لم يحفظ دفعة الحضور.");
+                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ دفعة الحضور.");
                 }
 
                 uploadedItems += chunk.Count;
@@ -175,7 +175,7 @@ public class ParentsRemoteSyncPublisher
         var (remoteUrl, syncKey, _) = GetRemoteSettings();
         if (string.IsNullOrWhiteSpace(remoteUrl) || string.IsNullOrWhiteSpace(syncKey))
         {
-            throw new InvalidOperationException("لم يُضبط سيرفر رويال الخارجي.");
+            throw new InvalidOperationException("لم يُضبط السيرفر الخارجي.");
         }
 
         var client = _httpClientFactory.CreateClient();
@@ -356,7 +356,7 @@ public class ParentsRemoteSyncPublisher
             detail = detail[..1500] + "…";
         }
 
-        return $"سيرفر رويال ({code}) — {detail} — {ingestUrl}";
+        return $"السيرفر الخارجي ({code}) — {detail} — {ingestUrl}";
     }
 
     private static string? ExtractJsonErrorMessage(string body)

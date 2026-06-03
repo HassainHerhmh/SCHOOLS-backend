@@ -47,6 +47,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ExamRecord> Exams => Set<ExamRecord>();
     public DbSet<GradeRuleRecord> GradeRules => Set<GradeRuleRecord>();
     public DbSet<GradeRecord> Grades => Set<GradeRecord>();
+    public DbSet<ClassScheduleSettingsRecord> ClassScheduleSettings => Set<ClassScheduleSettingsRecord>();
+    public DbSet<ClassSchedulePeriodRecord> ClassSchedulePeriods => Set<ClassSchedulePeriodRecord>();
     public DbSet<ParentsStudentSummaryRecord> ParentsStudentSummaries => Set<ParentsStudentSummaryRecord>();
     public DbSet<ParentsClassPublishRecord> ParentsClassPublishes => Set<ParentsClassPublishRecord>();
     public DbSet<ParentsSectionPublishRecord> ParentsSectionPublishes => Set<ParentsSectionPublishRecord>();

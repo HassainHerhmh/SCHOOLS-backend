@@ -105,6 +105,9 @@ builder.Services.AddScoped<ParentsAppIngestService>();
 builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
 builder.Services.AddSingleton<DatabaseHealthChecker>();
 builder.Services.AddSingleton<ErrorLestLogger>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AccountingCurrentUserService>();
+builder.Services.AddScoped<VoucherUserNameEnricher>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<SalaryJournalMonthEndHostedService>();
 builder.Services.AddControllers().AddJsonOptions(options =>

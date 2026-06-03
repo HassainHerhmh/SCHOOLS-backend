@@ -109,6 +109,46 @@ BEGIN
         created_at datetimeoffset(7) NULL
     );
 END;
+
+IF COL_LENGTH(N'dbo.receipt_vouchers', N'created_by_name') IS NULL
+    ALTER TABLE dbo.receipt_vouchers ADD created_by_name nvarchar(300) NULL;
+IF COL_LENGTH(N'dbo.receipt_vouchers', N'created_by_user_id') IS NULL
+    ALTER TABLE dbo.receipt_vouchers ADD created_by_user_id nvarchar(450) NULL;
+
+IF COL_LENGTH(N'dbo.payment_vouchers', N'created_by_name') IS NULL
+    ALTER TABLE dbo.payment_vouchers ADD created_by_name nvarchar(300) NULL;
+IF COL_LENGTH(N'dbo.payment_vouchers', N'created_by_user_id') IS NULL
+    ALTER TABLE dbo.payment_vouchers ADD created_by_user_id nvarchar(450) NULL;
+
+IF COL_LENGTH(N'dbo.journal_entries', N'created_by_name') IS NULL
+    ALTER TABLE dbo.journal_entries ADD created_by_name nvarchar(300) NULL;
+IF COL_LENGTH(N'dbo.journal_entries', N'created_by_user_id') IS NULL
+    ALTER TABLE dbo.journal_entries ADD created_by_user_id nvarchar(450) NULL;
+
+IF COL_LENGTH(N'dbo.currency_exchanges', N'created_by_name') IS NULL
+    ALTER TABLE dbo.currency_exchanges ADD created_by_name nvarchar(300) NULL;
+IF COL_LENGTH(N'dbo.currency_exchanges', N'created_by_user_id') IS NULL
+    ALTER TABLE dbo.currency_exchanges ADD created_by_user_id nvarchar(450) NULL;
+
+DECLARE @defaultUserName nvarchar(300);
+SELECT TOP 1 @defaultUserName = COALESCE(NULLIF(LTRIM(RTRIM(FullName)), N''), NULLIF(LTRIM(RTRIM(UserName)), N''), N'مدير النظام')
+FROM dbo.AspNetUsers
+ORDER BY UserName;
+
+IF @defaultUserName IS NOT NULL
+BEGIN
+    UPDATE dbo.receipt_vouchers SET created_by_name = @defaultUserName
+    WHERE created_by_name IS NULL OR LTRIM(RTRIM(created_by_name)) = N'';
+
+    UPDATE dbo.payment_vouchers SET created_by_name = @defaultUserName
+    WHERE created_by_name IS NULL OR LTRIM(RTRIM(created_by_name)) = N'';
+
+    UPDATE dbo.journal_entries SET created_by_name = @defaultUserName
+    WHERE created_by_name IS NULL OR LTRIM(RTRIM(created_by_name)) = N'';
+
+    UPDATE dbo.currency_exchanges SET created_by_name = @defaultUserName
+    WHERE created_by_name IS NULL OR LTRIM(RTRIM(created_by_name)) = N'';
+END
 """;
 
     public static void EnsureExists(ApplicationDbContext db)

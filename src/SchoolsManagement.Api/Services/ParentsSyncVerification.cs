@@ -13,7 +13,7 @@ public static class ParentsSyncVerification
 
         if (plan.HasChanges && uploaded.Total <= 0)
         {
-            issues.Add("استجابة سيرفر رويال لم تُسجّل أي سجل محفوظ — تحقق من مفتاح المزامنة X-Parents-Sync-Key.");
+            issues.Add("استجابة السيرفر الخارجي لم تُسجّل أي سجل محفوظ — تحقق من مفتاح المزامنة X-Parents-Sync-Key.");
         }
 
         if (plan.SyncStudents && plan.ChangedStudents > 0)
@@ -24,12 +24,12 @@ public static class ParentsSyncVerification
             }
             else if (remote is null)
             {
-                issues.Add("تعذر قراءة عدد الطلاب من سيرفر رويال بعد الرفع.");
+                issues.Add("تعذر قراءة عدد الطلاب من السيرفر الخارجي بعد الرفع.");
             }
             else if (remote.Students <= 0)
             {
                 issues.Add(
-                    $"جدول الطلاب على رويال فارغ رغم رفع {uploaded.Students} سجلًا — تحقق من قاعدة MySQL وجداول parents_students_summary.");
+                    $"جدول الطلاب على السيرفر الخارجي فارغ رغم رفع {uploaded.Students} سجلًا — تحقق من قاعدة MySQL وجداول parents_students_summary.");
             }
         }
 
@@ -41,7 +41,7 @@ public static class ParentsSyncVerification
             }
             else if (remote?.Classes <= 0)
             {
-                issues.Add("جدول الصفوف على رويال فارغ بعد الرفع.");
+                issues.Add("جدول الصفوف على السيرفر الخارجي فارغ بعد الرفع.");
             }
         }
 
@@ -53,7 +53,7 @@ public static class ParentsSyncVerification
             }
             else if (remote?.Sections <= 0)
             {
-                issues.Add("جدول الشعب على رويال فارغ بعد الرفع.");
+                issues.Add("جدول الشعب على السيرفر الخارجي فارغ بعد الرفع.");
             }
         }
 
@@ -65,7 +65,7 @@ public static class ParentsSyncVerification
             }
             else if (remote?.Attendance <= 0)
             {
-                issues.Add("جدول الحضور على رويال فارغ بعد الرفع.");
+                issues.Add("جدول الحضور على السيرفر الخارجي فارغ بعد الرفع.");
             }
         }
 
@@ -77,7 +77,7 @@ public static class ParentsSyncVerification
             }
             else if (remote?.StudentReports <= 0)
             {
-                issues.Add("جدول تقارير الطلاب على رويال فارغ بعد الرفع.");
+                issues.Add("جدول تقارير الطلاب على السيرفر الخارجي فارغ بعد الرفع.");
             }
         }
 
@@ -86,7 +86,7 @@ public static class ParentsSyncVerification
             return new ParentsPublishOutcome
             {
                 Success = false,
-                Message = "فشل التحقق: البيانات لم تصل بشكل صحيح إلى سيرفر رويال.",
+                Message = "فشل التحقق: البيانات لم تصل بشكل صحيح إلى السيرفر الخارجي.",
                 FailureReason = string.Join(" ", issues),
                 Uploaded = uploaded,
                 Remote = remote
@@ -123,7 +123,7 @@ public static class ParentsSyncVerification
         return new ParentsPublishOutcome
         {
             Success = true,
-            Message = $"تم تحديث بيانات تطبيق أولياء الأمور على سيرفر رويال بنجاح ({detail}).",
+            Message = $"تم تحديث بيانات تطبيق أولياء الأمور على السيرفر الخارجي بنجاح ({detail}).",
             Uploaded = uploaded,
             Remote = remote
         };
