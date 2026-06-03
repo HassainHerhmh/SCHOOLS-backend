@@ -104,6 +104,7 @@ builder.Services.AddScoped<PermissionMatrixService>();
 builder.Services.AddScoped<ParentsAppIngestService>();
 builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
 builder.Services.AddSingleton<DatabaseHealthChecker>();
+builder.Services.AddSingleton<ErrorLestLogger>();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<SalaryJournalMonthEndHostedService>();
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -207,6 +208,11 @@ app.UseExceptionHandler(errorApp =>
     {
         var handler = context.Features.Get<IExceptionHandlerFeature>();
         var ex = handler?.Error;
+        if (ex != null)
+        {
+            context.RequestServices.GetRequiredService<ErrorLestLogger>().Log(ex, context);
+        }
+
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
         context.Response.ContentType = "application/json; charset=utf-8";
 
@@ -263,6 +269,7 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
+            app.Services.GetRequiredService<ErrorLestLogger>().Log(ex);
             app.Logger.LogError(ex, "فشل تهيئة المستخدمين والأدوار الافتراضية.");
         }
     }

@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- أرقام الأسطر في ErrorLest.txt حتى في نشر Release -->
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
