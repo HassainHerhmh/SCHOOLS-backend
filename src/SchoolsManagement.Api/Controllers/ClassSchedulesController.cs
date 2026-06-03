@@ -213,9 +213,7 @@ public class ClassSchedulesController : ControllerBase
             }
             else
             {
-                var sid = body.SectionId != Guid.Empty
-                    ? body.SectionId
-                    : (body.SectionIdAlt ?? Guid.Empty);
+                var sid = body.SectionId ?? body.SectionIdAlt ?? Guid.Empty;
                 if (sid == Guid.Empty)
                 {
                     _errorLog.LogApiError("جدول الحصص: الشعبة فارغة", HttpContext);
@@ -347,7 +345,7 @@ public class ClassSchedulesController : ControllerBase
         public Guid ClassIdAlt { get; set; }
 
         [JsonPropertyName("section_id")]
-        public Guid SectionId { get; set; }
+        public Guid? SectionId { get; set; }
 
         public Guid? SectionIdAlt { get; set; }
 
