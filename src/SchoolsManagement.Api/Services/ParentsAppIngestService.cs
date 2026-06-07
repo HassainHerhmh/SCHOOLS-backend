@@ -209,6 +209,8 @@ public class ParentsAppIngestService
                 row.DayName = p.DayName;
                 row.ScheduleDate = scheduleDate;
                 row.PeriodNumber = p.PeriodNumber;
+                row.EntryKind = string.IsNullOrWhiteSpace(p.EntryKind) ? "period" : p.EntryKind.Trim();
+                row.ItemName = p.ItemName;
                 row.SubjectId = p.SubjectId;
                 row.SubjectName = p.SubjectName;
                 row.DurationMinutes = p.DurationMinutes;
@@ -218,40 +220,6 @@ public class ParentsAppIngestService
                 row.EndMinute = p.EndMinute;
                 row.SyncedAt = syncedAt;
                 result.SchedulePeriods++;
-            }
-
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-
-        if (payload.ScheduleCustomItems is { Count: > 0 })
-        {
-            foreach (var c in payload.ScheduleCustomItems)
-            {
-                if (!DateOnly.TryParse(c.ScheduleDate, out var scheduleDate))
-                {
-                    continue;
-                }
-
-                var row = await _db.ParentsScheduleCustomItems.FirstOrDefaultAsync(x => x.Id == c.Id, cancellationToken);
-                if (row is null)
-                {
-                    row = new ParentsScheduleCustomItemRecord { Id = c.Id };
-                    _db.ParentsScheduleCustomItems.Add(row);
-                }
-
-                row.ClassId = c.ClassId;
-                row.SectionId = c.SectionId;
-                row.SectionName = c.SectionName;
-                row.DayName = c.DayName;
-                row.ScheduleDate = scheduleDate;
-                row.ItemName = c.ItemName;
-                row.PositionNumber = c.PositionNumber;
-                row.StartHour = c.StartHour;
-                row.StartMinute = c.StartMinute;
-                row.EndHour = c.EndHour;
-                row.EndMinute = c.EndMinute;
-                row.SyncedAt = syncedAt;
-                result.ScheduleCustomItems++;
             }
 
             await _db.SaveChangesAsync(cancellationToken);

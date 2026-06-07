@@ -221,19 +221,22 @@ public class ParentsAppController : ControllerBase
             query = query.Where(p => p.DayName == day);
         }
 
-        var rows = await query
-            .OrderBy(p => p.PeriodNumber)
+        var entries = await query
+            .OrderBy(p => (p.StartHour ?? 0) * 60 + (p.StartMinute ?? 0))
+            .ThenBy(p => p.PeriodNumber)
             .Select(p => new
             {
                 id = p.Id,
+                kind = p.EntryKind,
                 class_id = p.ClassId,
                 section_id = p.SectionId,
                 section_name = p.SectionName,
                 day_name = p.DayName,
                 schedule_date = p.ScheduleDate.ToString("yyyy-MM-dd"),
-                period_number = p.PeriodNumber,
+                period_number = p.EntryKind == "custom" ? (int?)null : p.PeriodNumber,
                 subject_id = p.SubjectId,
                 subject_name = p.SubjectName,
+                item_name = p.ItemName,
                 duration_minutes = p.DurationMinutes,
                 start_hour = p.StartHour,
                 start_minute = p.StartMinute,
@@ -242,79 +245,13 @@ public class ParentsAppController : ControllerBase
             })
             .ToListAsync(ct);
 
-        var customQuery = _db.ParentsScheduleCustomItems.AsNoTracking()
-            .Where(c => c.ClassId == classId && c.SectionId == sectionId);
-        if (dateFilter.HasValue)
-        {
-            customQuery = customQuery.Where(c => c.ScheduleDate == dateFilter.Value);
-        }
-
-        if (!string.IsNullOrWhiteSpace(day_name))
-        {
-            var day = day_name.Trim();
-            customQuery = customQuery.Where(c => c.DayName == day);
-        }
-
-        var customItems = await customQuery
-            .OrderBy(c => c.PositionNumber)
-            .Select(c => new
-            {
-                id = c.Id,
-                class_id = c.ClassId,
-                section_id = c.SectionId,
-                section_name = c.SectionName,
-                day_name = c.DayName,
-                schedule_date = c.ScheduleDate.ToString("yyyy-MM-dd"),
-                item_name = c.ItemName,
-                position_number = c.PositionNumber,
-                start_hour = c.StartHour,
-                start_minute = c.StartMinute,
-                end_hour = c.EndHour,
-                end_minute = c.EndMinute
-            })
-            .ToListAsync(ct);
-
-        var timelineEntries = rows
-            .Select(p => (
-                SortKey: (p.start_hour ?? 0) * 60 + (p.start_minute ?? 0),
-                Entry: (object)new
-                {
-                    kind = "period",
-                    p.id,
-                    p.period_number,
-                    subject_name = p.subject_name,
-                    item_name = (string?)null,
-                    p.start_hour,
-                    p.start_minute,
-                    p.end_hour,
-                    p.end_minute
-                }))
-            .Concat(customItems.Select(c => (
-                SortKey: c.start_hour * 60 + c.start_minute,
-                Entry: (object)new
-                {
-                    kind = "custom",
-                    id = c.id,
-                    period_number = (int?)null,
-                    subject_name = (string?)null,
-                    item_name = c.item_name,
-                    start_hour = (int?)c.start_hour,
-                    start_minute = (int?)c.start_minute,
-                    end_hour = (int?)c.end_hour,
-                    end_minute = (int?)c.end_minute
-                })))
-            .OrderBy(x => x.SortKey)
-            .Select(x => x.Entry)
-            .ToList();
-
         return Ok(new
         {
             class_id = classId,
             section_id = sectionId,
             schedule_date = dateFilter?.ToString("yyyy-MM-dd"),
-            periods = rows,
-            custom_items = customItems,
-            timeline = timelineEntries
+            entries,
+            timeline = entries
         });
     }
 

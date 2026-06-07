@@ -197,29 +197,21 @@ public class ParentsRemoteSyncPublisher
         if (plan.SyncSchedule)
         {
             onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع جدول الحصص");
-            var schedulePeriods = await LoadSchedulePeriodsAsync(plan, cancellationToken);
-            var scheduleCustomItems = await LoadScheduleCustomItemsAsync(plan, cancellationToken);
+            var scheduleEntries = await LoadSchedulePeriodsAsync(plan, cancellationToken);
             var scheduleSettings = await LoadScheduleSettingsAsync(cancellationToken);
-            if (schedulePeriods.Count > 0 || scheduleCustomItems.Count > 0 || scheduleSettings is not null)
+            if (scheduleEntries.Count > 0 || scheduleSettings is not null)
             {
                 var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
                 {
                     SchoolId = schoolId,
-                    SchedulePeriods = schedulePeriods,
-                    ScheduleCustomItems = scheduleCustomItems,
+                    SchedulePeriods = scheduleEntries,
                     ScheduleSettings = scheduleSettings
                 }, cancellationToken);
                 aggregate.SchedulePeriods += result.SchedulePeriods;
-                aggregate.ScheduleCustomItems += result.ScheduleCustomItems;
                 aggregate.ScheduleSettings += result.ScheduleSettings;
-                if (schedulePeriods.Count > 0 && result.SchedulePeriods <= 0)
+                if (scheduleEntries.Count > 0 && result.SchedulePeriods <= 0)
                 {
                     throw new InvalidOperationException("السيرفر الخارجي لم يحفظ جدول الحصص.");
-                }
-
-                if (scheduleCustomItems.Count > 0 && result.ScheduleCustomItems <= 0)
-                {
-                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ بنود الجدول (طابور/استراحة).");
                 }
 
                 uploadedItems += plan.ChangedSchedule;
@@ -402,30 +394,42 @@ public class ParentsRemoteSyncPublisher
 
     private async Task<List<ParentsSchedulePeriodIngestDto>> LoadSchedulePeriodsAsync(ParentsSyncPlan plan, CancellationToken ct)
     {
-        var query = _db.ClassSchedulePeriods.AsNoTracking();
+        var periodQuery = _db.ClassSchedulePeriods.AsNoTracking();
         if (plan.ScheduleSince is not null)
         {
-            query = query.Where(p => p.UpdatedAt > plan.ScheduleSince.Value);
+            periodQuery = periodQuery.Where(p => p.UpdatedAt > plan.ScheduleSince.Value);
         }
 
-        var rows = await query
+        var periodRows = await periodQuery
             .OrderBy(p => p.ClassId)
             .ThenBy(p => p.SectionId)
             .ThenBy(p => p.ScheduleDate)
             .ThenBy(p => p.PeriodNumber)
             .ToListAsync(ct);
 
-        if (rows.Count == 0)
+        var customRows = await _db.ClassScheduleCustomItems.AsNoTracking()
+            .OrderBy(p => p.ClassId)
+            .ThenBy(p => p.SectionId)
+            .ThenBy(p => p.ScheduleDate)
+            .ThenBy(p => p.PositionNumber)
+            .ToListAsync(ct);
+
+        if (periodRows.Count == 0 && customRows.Count == 0)
         {
             return [];
         }
 
-        var sectionIds = rows.Select(r => r.SectionId).Distinct().ToList();
-        var subjectIds = rows.Where(r => r.SubjectId.HasValue).Select(r => r.SubjectId!.Value).Distinct().ToList();
+        var sectionIds = periodRows.Select(r => r.SectionId)
+            .Concat(customRows.Select(r => r.SectionId))
+            .Distinct()
+            .ToList();
+        var subjectIds = periodRows.Where(r => r.SubjectId.HasValue).Select(r => r.SubjectId!.Value).Distinct().ToList();
 
-        var sectionNames = await _db.SchoolSections.AsNoTracking()
-            .Where(s => sectionIds.Contains(s.Id))
-            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var sectionNames = sectionIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.SchoolSections.AsNoTracking()
+                .Where(s => sectionIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
         var subjectNames = subjectIds.Count == 0
             ? new Dictionary<Guid, string>()
@@ -433,7 +437,7 @@ public class ParentsRemoteSyncPublisher
                 .Where(s => subjectIds.Contains(s.Id))
                 .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
-        return rows.Select(p => new ParentsSchedulePeriodIngestDto
+        var periods = periodRows.Select(p => new ParentsSchedulePeriodIngestDto
         {
             Id = p.Id,
             ClassId = p.ClassId,
@@ -442,6 +446,7 @@ public class ParentsRemoteSyncPublisher
             DayName = p.DayName,
             ScheduleDate = ScheduleDateHelper.ToApiString(p.ScheduleDate),
             PeriodNumber = p.PeriodNumber,
+            EntryKind = "period",
             SubjectId = p.SubjectId,
             SubjectName = p.SubjectId.HasValue ? subjectNames.GetValueOrDefault(p.SubjectId.Value) : null,
             DurationMinutes = p.DurationMinutes,
@@ -449,32 +454,9 @@ public class ParentsRemoteSyncPublisher
             StartMinute = p.StartMinute,
             EndHour = p.EndHour,
             EndMinute = p.EndMinute
-        }).ToList();
-    }
+        });
 
-    private async Task<List<ParentsScheduleCustomItemIngestDto>> LoadScheduleCustomItemsAsync(
-        ParentsSyncPlan plan,
-        CancellationToken ct)
-    {
-        // البنود (طابور/استراحة) قليلة — نرفعها كلها عند أي مزامنة جدول.
-        var rows = await _db.ClassScheduleCustomItems.AsNoTracking()
-            .OrderBy(p => p.ClassId)
-            .ThenBy(p => p.SectionId)
-            .ThenBy(p => p.ScheduleDate)
-            .ThenBy(p => p.PositionNumber)
-            .ToListAsync(ct);
-
-        if (rows.Count == 0)
-        {
-            return [];
-        }
-
-        var sectionIds = rows.Select(r => r.SectionId).Distinct().ToList();
-        var sectionNames = await _db.SchoolSections.AsNoTracking()
-            .Where(s => sectionIds.Contains(s.Id))
-            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
-
-        return rows.Select(p => new ParentsScheduleCustomItemIngestDto
+        var customs = customRows.Select(p => new ParentsSchedulePeriodIngestDto
         {
             Id = p.Id,
             ClassId = p.ClassId,
@@ -482,13 +464,17 @@ public class ParentsRemoteSyncPublisher
             SectionName = sectionNames.GetValueOrDefault(p.SectionId),
             DayName = p.DayName,
             ScheduleDate = ScheduleDateHelper.ToApiString(p.ScheduleDate),
+            PeriodNumber = p.PositionNumber,
+            EntryKind = "custom",
             ItemName = p.ItemName,
-            PositionNumber = p.PositionNumber,
+            DurationMinutes = 0,
             StartHour = p.StartHour,
             StartMinute = p.StartMinute,
             EndHour = p.EndHour,
             EndMinute = p.EndMinute
-        }).ToList();
+        });
+
+        return periods.Concat(customs).ToList();
     }
 
     private async Task<ParentsScheduleSettingsIngestDto?> LoadScheduleSettingsAsync(CancellationToken ct)

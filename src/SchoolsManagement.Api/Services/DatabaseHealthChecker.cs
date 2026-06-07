@@ -32,7 +32,6 @@ public sealed class DatabaseHealthChecker
         "parents_attendance_summary",
         "parents_student_installments",
         "parents_schedule_periods",
-        "parents_schedule_custom_items",
         "parents_schedule_settings"
     ];
 

@@ -98,8 +98,7 @@ public class SyncController : ControllerBase
                 Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken),
                 StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken),
                 Installments = await _db.ParentsStudentInstallments.CountAsync(cancellationToken),
-                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken),
-                ScheduleCustomItems = await _db.ParentsScheduleCustomItems.CountAsync(cancellationToken)
+                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken)
             };
             return Ok(counts);
         }

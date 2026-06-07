@@ -10,7 +10,6 @@ public class ParentsSyncIngestPayload
     public List<ParentsStudentReportIngestDto>? StudentReports { get; set; }
     public List<ParentsInstallmentIngestDto>? Installments { get; set; }
     public List<ParentsSchedulePeriodIngestDto>? SchedulePeriods { get; set; }
-    public List<ParentsScheduleCustomItemIngestDto>? ScheduleCustomItems { get; set; }
     public ParentsScheduleSettingsIngestDto? ScheduleSettings { get; set; }
 }
 
@@ -99,6 +98,8 @@ public class ParentsSchedulePeriodIngestDto
     public string DayName { get; set; } = string.Empty;
     public string ScheduleDate { get; set; } = string.Empty;
     public int PeriodNumber { get; set; }
+    public string EntryKind { get; set; } = "period";
+    public string? ItemName { get; set; }
     public Guid? SubjectId { get; set; }
     public string? SubjectName { get; set; }
     public int DurationMinutes { get; set; }
@@ -106,22 +107,6 @@ public class ParentsSchedulePeriodIngestDto
     public int? StartMinute { get; set; }
     public int? EndHour { get; set; }
     public int? EndMinute { get; set; }
-}
-
-public class ParentsScheduleCustomItemIngestDto
-{
-    public Guid Id { get; set; }
-    public Guid ClassId { get; set; }
-    public Guid SectionId { get; set; }
-    public string? SectionName { get; set; }
-    public string DayName { get; set; } = string.Empty;
-    public string ScheduleDate { get; set; } = string.Empty;
-    public string ItemName { get; set; } = string.Empty;
-    public int PositionNumber { get; set; }
-    public int StartHour { get; set; }
-    public int StartMinute { get; set; }
-    public int EndHour { get; set; }
-    public int EndMinute { get; set; }
 }
 
 public class ParentsScheduleSettingsIngestDto
@@ -139,11 +124,10 @@ public class ParentsIngestResult
     public int StudentReports { get; set; }
     public int Installments { get; set; }
     public int SchedulePeriods { get; set; }
-    public int ScheduleCustomItems { get; set; }
     public int ScheduleSettings { get; set; }
 
     public int Total => Students + Classes + Sections + Attendance + StudentReports
-                        + Installments + SchedulePeriods + ScheduleCustomItems + ScheduleSettings;
+                        + Installments + SchedulePeriods + ScheduleSettings;
 }
 
 public class ParentsRemoteDataCounts
@@ -155,7 +139,6 @@ public class ParentsRemoteDataCounts
     public int StudentReports { get; set; }
     public int Installments { get; set; }
     public int SchedulePeriods { get; set; }
-    public int ScheduleCustomItems { get; set; }
 }
 
 /// <summary>نتيجة رفع + تحقق من وجود البيانات على سيرفر رويال (للعرض في الواجهة).</summary>

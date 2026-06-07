@@ -236,6 +236,10 @@ BEGIN
 
         period_number int NOT NULL,
 
+        entry_kind nvarchar(20) NOT NULL CONSTRAINT DF_parents_sched_kind DEFAULT (N'period'),
+
+        item_name nvarchar(200) NULL,
+
         subject_id uniqueidentifier NULL,
 
         subject_name nvarchar(300) NULL,
@@ -277,48 +281,6 @@ BEGIN
         synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_sched_set_synced DEFAULT (sysdatetimeoffset())
 
     );
-
-END
-
-
-
-IF OBJECT_ID(N'dbo.parents_schedule_custom_items', N'U') IS NULL
-
-BEGIN
-
-    CREATE TABLE dbo.parents_schedule_custom_items (
-
-        id uniqueidentifier NOT NULL CONSTRAINT PK_parents_schedule_custom_items PRIMARY KEY,
-
-        class_id uniqueidentifier NOT NULL,
-
-        section_id uniqueidentifier NOT NULL,
-
-        section_name nvarchar(300) NULL,
-
-        day_name nvarchar(50) NOT NULL,
-
-        schedule_date date NOT NULL,
-
-        item_name nvarchar(200) NOT NULL,
-
-        position_number int NOT NULL,
-
-        start_hour int NOT NULL,
-
-        start_minute int NOT NULL,
-
-        end_hour int NOT NULL,
-
-        end_minute int NOT NULL,
-
-        synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_sched_custom_synced DEFAULT (sysdatetimeoffset())
-
-    );
-
-    CREATE INDEX IX_parents_sched_custom_class_section ON dbo.parents_schedule_custom_items(class_id, section_id);
-
-    CREATE INDEX IX_parents_sched_custom_date ON dbo.parents_schedule_custom_items(schedule_date);
 
 END
 
@@ -518,6 +480,10 @@ CREATE TABLE IF NOT EXISTS parents_schedule_periods (
 
     period_number int NOT NULL,
 
+    entry_kind varchar(20) NOT NULL DEFAULT 'period',
+
+    item_name varchar(200) NULL,
+
     subject_id char(36) NULL,
 
     subject_name varchar(300) NULL,
@@ -558,44 +524,6 @@ CREATE TABLE IF NOT EXISTS parents_schedule_settings (
 
 );
 
-
-
-CREATE TABLE IF NOT EXISTS parents_schedule_custom_items (
-
-    id char(36) NOT NULL,
-
-    class_id char(36) NOT NULL,
-
-    section_id char(36) NOT NULL,
-
-    section_name varchar(300) NULL,
-
-    day_name varchar(50) NOT NULL,
-
-    schedule_date date NOT NULL,
-
-    item_name varchar(200) NOT NULL,
-
-    position_number int NOT NULL,
-
-    start_hour int NOT NULL,
-
-    start_minute int NOT NULL,
-
-    end_hour int NOT NULL,
-
-    end_minute int NOT NULL,
-
-    synced_at datetime(6) NOT NULL,
-
-    PRIMARY KEY (id),
-
-    INDEX IX_parents_sched_custom_class_section (class_id, section_id),
-
-    INDEX IX_parents_sched_custom_date (schedule_date)
-
-);
-
 """;
 
 
@@ -611,9 +539,8 @@ CREATE TABLE IF NOT EXISTS parents_schedule_custom_items (
             db.Database.ExecuteSqlRaw(MySqlSql);
 
             EnsureBooksFeesColumns(db);
-
+            EnsureScheduleEntryKindColumns(db);
             return;
-
         }
 
 
@@ -621,7 +548,7 @@ CREATE TABLE IF NOT EXISTS parents_schedule_custom_items (
         db.Database.ExecuteSqlRaw(SqlServerSql);
 
         EnsureBooksFeesColumns(db);
-
+        EnsureScheduleEntryKindColumns(db);
     }
 
 
@@ -675,7 +602,7 @@ CREATE TABLE IF NOT EXISTS parents_schedule_custom_items (
         }
 
         await EnsureBooksFeesColumnsAsync(db, cancellationToken);
-
+        await EnsureScheduleEntryKindColumnsAsync(db, cancellationToken);
     }
 
     private const string SqlServerBooksFeesColumnsSql = """
@@ -703,11 +630,42 @@ IF COL_LENGTH(N'dbo.parents_classes', N'books_fees') IS NULL
         await AddMySqlColumnIfMissingAsync(db, "parents_classes", "books_fees", cancellationToken);
     }
 
+    private const string SqlServerScheduleEntryKindColumnsSql = """
+
+IF COL_LENGTH(N'dbo.parents_schedule_periods', N'entry_kind') IS NULL
+    ALTER TABLE dbo.parents_schedule_periods ADD entry_kind nvarchar(20) NOT NULL
+        CONSTRAINT DF_parents_sched_kind_mig DEFAULT (N'period');
+IF COL_LENGTH(N'dbo.parents_schedule_periods', N'item_name') IS NULL
+    ALTER TABLE dbo.parents_schedule_periods ADD item_name nvarchar(200) NULL;
+""";
+
+    private static void EnsureScheduleEntryKindColumns(ApplicationDbContext db) =>
+        db.Database.ExecuteSqlRaw(SqlServerScheduleEntryKindColumnsSql);
+
+    private static async Task EnsureScheduleEntryKindColumnsAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken)
+    {
+        if (!DatabaseProviderHelper.IsMySql(db))
+        {
+            EnsureScheduleEntryKindColumns(db);
+            return;
+        }
+
+        await AddMySqlColumnIfMissingAsync(
+            db, "parents_schedule_periods", "entry_kind", cancellationToken,
+            "ALTER TABLE parents_schedule_periods ADD COLUMN entry_kind varchar(20) NOT NULL DEFAULT 'period'");
+        await AddMySqlColumnIfMissingAsync(
+            db, "parents_schedule_periods", "item_name", cancellationToken,
+            "ALTER TABLE parents_schedule_periods ADD COLUMN item_name varchar(200) NULL");
+    }
+
     private static async Task AddMySqlColumnIfMissingAsync(
         ApplicationDbContext db,
         string tableName,
         string columnName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? alterSqlOverride = null)
     {
         var exists = await db.Database.SqlQueryRaw<int>(
                 """
@@ -726,7 +684,7 @@ IF COL_LENGTH(N'dbo.parents_classes', N'books_fees') IS NULL
             return;
         }
 
-        var alterSql = tableName switch
+        var alterSql = alterSqlOverride ?? tableName switch
         {
             "parents_students_summary" =>
                 "ALTER TABLE parents_students_summary ADD COLUMN books_fees decimal(18,2) NOT NULL DEFAULT 0",

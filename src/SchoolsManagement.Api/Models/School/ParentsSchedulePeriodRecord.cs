@@ -30,6 +30,14 @@ public class ParentsSchedulePeriodRecord
     [Column("period_number")]
     public int PeriodNumber { get; set; }
 
+    [Column("entry_kind")]
+    [MaxLength(20)]
+    public string EntryKind { get; set; } = "period";
+
+    [Column("item_name")]
+    [MaxLength(200)]
+    public string? ItemName { get; set; }
+
     [Column("subject_id")]
     public Guid? SubjectId { get; set; }
 
