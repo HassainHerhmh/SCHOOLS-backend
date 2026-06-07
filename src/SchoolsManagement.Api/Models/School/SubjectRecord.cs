@@ -47,6 +47,20 @@ public class ExamRecord
     [Column("max_score", TypeName = "decimal(18,2)")]
     public decimal MaxScore { get; set; } = 100;
 
+    [Column("exam_month")]
+    [MaxLength(30)]
+    public string? ExamMonth { get; set; }
+
+    [MaxLength(20)]
+    public string Semester { get; set; } = "first";
+
+    [Column("activity_type")]
+    [MaxLength(50)]
+    public string? ActivityType { get; set; }
+
+    [Column("academic_year")]
+    public int? AcademicYear { get; set; }
+
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }
 

@@ -19,6 +19,7 @@ public class SyncController : ControllerBase
     private const string ClassesCheckpointKey = "parents.classes";
     private const string SectionsCheckpointKey = "parents.sections";
     private const string AttendanceCheckpointKey = "parents.attendance";
+    private const string ScheduleCheckpointKey = "parents.schedule";
 
     private static readonly ConcurrentDictionary<string, ParentsSyncProgressState> ParentsSyncProgressBySession = new();
 
@@ -54,7 +55,9 @@ public class SyncController : ControllerBase
             changed_students = plan.ChangedStudents,
             changed_classes = plan.ChangedClasses,
             changed_sections = plan.ChangedSections,
-            changed_attendance = plan.ChangedAttendance
+            changed_attendance = plan.ChangedAttendance,
+            changed_installments = plan.ChangedInstallments,
+            changed_schedule = plan.ChangedSchedule
         });
     }
 
@@ -92,7 +95,9 @@ public class SyncController : ControllerBase
                 Classes = await _db.ParentsClassPublishes.CountAsync(cancellationToken),
                 Sections = await _db.ParentsSectionPublishes.CountAsync(cancellationToken),
                 Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken),
-                StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken)
+                StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken),
+                Installments = await _db.ParentsStudentInstallments.CountAsync(cancellationToken),
+                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken)
             };
             return Ok(counts);
         }
@@ -335,11 +340,13 @@ public class SyncController : ControllerBase
         checkpoints.TryGetValue(ClassesCheckpointKey, out var classesSince);
         checkpoints.TryGetValue(SectionsCheckpointKey, out var sectionsSince);
         checkpoints.TryGetValue(AttendanceCheckpointKey, out var attendanceSince);
+        checkpoints.TryGetValue(ScheduleCheckpointKey, out var scheduleSince);
 
         var hasStudentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(StudentsCheckpointKey);
         var hasClassesCheckpoint = !forceFullSync && checkpoints.ContainsKey(ClassesCheckpointKey);
         var hasSectionsCheckpoint = !forceFullSync && checkpoints.ContainsKey(SectionsCheckpointKey);
         var hasAttendanceCheckpoint = !forceFullSync && checkpoints.ContainsKey(AttendanceCheckpointKey);
+        var hasScheduleCheckpoint = !forceFullSync && checkpoints.ContainsKey(ScheduleCheckpointKey);
 
         var changedStudents = hasStudentsCheckpoint
             ? await _db.StudentRecords.CountAsync(s =>
@@ -367,16 +374,34 @@ public class SyncController : ControllerBase
                 activeStudentIds.Contains(a.StudentId) && a.CreatedAt > attendanceSince, cancellationToken)
             : await _db.AttendanceRecords.CountAsync(a => activeStudentIds.Contains(a.StudentId), cancellationToken);
 
+        var changedSchedule = hasScheduleCheckpoint
+            ? await _db.ClassSchedulePeriods.CountAsync(p => p.UpdatedAt > scheduleSince, cancellationToken)
+            : await _db.ClassSchedulePeriods.CountAsync(cancellationToken);
+
+        if (hasScheduleCheckpoint)
+        {
+            var settingsUpdated = await _db.ClassScheduleSettings
+                .AsNoTracking()
+                .AnyAsync(s => s.Id == 1 && s.UpdatedAt > scheduleSince, cancellationToken);
+            if (settingsUpdated && changedSchedule == 0)
+            {
+                changedSchedule = 1;
+            }
+        }
+
         var syncStudents = changedStudents > 0;
         var syncClasses = changedClasses > 0;
         var syncSections = changedSections > 0;
         var syncAttendance = changedAttendance > 0;
-        var totalItems = changedStudents + changedClasses + changedSections + changedAttendance;
-        var itemLabel = syncStudents && !syncClasses && !syncSections && !syncAttendance
+        var syncSchedule = changedSchedule > 0;
+        var totalItems = changedStudents + changedClasses + changedSections + changedAttendance + changedSchedule;
+        var itemLabel = syncStudents && !syncClasses && !syncSections && !syncAttendance && !syncSchedule
             ? "طالب"
-            : syncAttendance && !syncStudents && !syncClasses && !syncSections
+            : syncAttendance && !syncStudents && !syncClasses && !syncSections && !syncSchedule
                 ? "سجل حضور"
-                : "عنصر";
+                : syncSchedule && !syncStudents && !syncClasses && !syncSections && !syncAttendance
+                    ? "حصة"
+                    : "عنصر";
 
         return new ParentsSyncPlan
         {
@@ -384,18 +409,23 @@ public class SyncController : ControllerBase
             ChangedClasses = changedClasses,
             ChangedSections = changedSections,
             ChangedAttendance = changedAttendance,
+            ChangedInstallments = changedStudents,
+            ChangedSchedule = changedSchedule,
             SyncStudents = syncStudents,
             SyncClasses = syncClasses,
             SyncSections = syncSections,
             SyncAttendance = syncAttendance,
             SyncStudentReports = syncStudents,
+            SyncInstallments = syncStudents,
             ChangedStudentReports = changedStudents,
+            SyncSchedule = syncSchedule,
             TotalItems = totalItems,
             ItemLabel = itemLabel,
             AttendanceSince = hasAttendanceCheckpoint ? attendanceSince : null,
             StudentsSince = hasStudentsCheckpoint ? studentsSince : null,
             ClassesSince = hasClassesCheckpoint ? classesSince : null,
             SectionsSince = hasSectionsCheckpoint ? sectionsSince : null,
+            ScheduleSince = hasScheduleCheckpoint ? scheduleSince : null,
             CheckpointAt = checkpointAt
         };
     }
@@ -420,6 +450,11 @@ public class SyncController : ControllerBase
         if (plan.SyncAttendance)
         {
             await UpsertCheckpoint(AttendanceCheckpointKey, plan.CheckpointAt, cancellationToken);
+        }
+
+        if (plan.SyncSchedule)
+        {
+            await UpsertCheckpoint(ScheduleCheckpointKey, plan.CheckpointAt, cancellationToken);
         }
     }
 

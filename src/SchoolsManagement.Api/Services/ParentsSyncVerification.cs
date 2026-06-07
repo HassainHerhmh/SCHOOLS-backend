@@ -81,6 +81,30 @@ public static class ParentsSyncVerification
             }
         }
 
+        if (plan.SyncInstallments && plan.ChangedInstallments > 0)
+        {
+            if (uploaded.Installments <= 0)
+            {
+                issues.Add($"لم تُحفظ أقساط الطلاب من أصل {plan.ChangedInstallments} طالب.");
+            }
+            else if (remote?.Installments <= 0)
+            {
+                issues.Add("جدول أقساط الطلاب على السيرفر الخارجي فارغ بعد الرفع.");
+            }
+        }
+
+        if (plan.SyncSchedule && plan.ChangedSchedule > 0)
+        {
+            if (uploaded.SchedulePeriods <= 0 && uploaded.ScheduleSettings <= 0)
+            {
+                issues.Add($"لم يُحفظ جدول الحصص من أصل {plan.ChangedSchedule} حصة.");
+            }
+            else if (remote?.SchedulePeriods <= 0)
+            {
+                issues.Add("جدول الحصص على السيرفر الخارجي فارغ بعد الرفع.");
+            }
+        }
+
         if (issues.Count > 0)
         {
             return new ParentsPublishOutcome
@@ -117,6 +141,16 @@ public static class ParentsSyncVerification
         if (uploaded.StudentReports > 0)
         {
             parts.Add($"{uploaded.StudentReports} تقرير");
+        }
+
+        if (uploaded.Installments > 0)
+        {
+            parts.Add($"{uploaded.Installments} قسط");
+        }
+
+        if (uploaded.SchedulePeriods > 0)
+        {
+            parts.Add($"{uploaded.SchedulePeriods} حصة");
         }
 
         var detail = parts.Count > 0 ? string.Join("، ", parts) : $"{plan.TotalItems} عنصر";

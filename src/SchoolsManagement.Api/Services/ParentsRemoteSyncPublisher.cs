@@ -69,19 +69,40 @@ public class ParentsRemoteSyncPublisher
         {
             onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع بيانات الطلاب إلى السيرفر الخارجي");
             var students = await LoadStudentsAsync(plan, cancellationToken);
+            PaymentInstallmentSettingsRecord? installmentSettings = null;
+            if (plan.SyncInstallments)
+            {
+                installmentSettings = await _db.PaymentInstallmentSettings.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken)
+                    ?? new PaymentInstallmentSettingsRecord
+                    {
+                        Id = 1,
+                        TuitionInstallmentsCount = 6,
+                        BusInstallmentsCount = 2
+                    };
+            }
             var chunkSize = 40;
             for (var i = 0; i < students.Count; i += chunkSize)
             {
                 var chunk = students.Skip(i).Take(chunkSize).ToList();
-                var reportChunk = await LoadStudentReportsAsync(plan, chunk.Select(s => s.Id).ToList(), cancellationToken);
+                var studentIds = chunk.Select(s => s.Id).ToList();
+                var reportChunk = await LoadStudentReportsAsync(plan, studentIds, cancellationToken);
+                List<ParentsInstallmentIngestDto>? installmentChunk = null;
+                if (plan.SyncInstallments && installmentSettings is not null)
+                {
+                    installmentChunk = await LoadInstallmentsAsync(plan, studentIds, installmentSettings, cancellationToken);
+                }
+
                 var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
                 {
                     SchoolId = schoolId,
                     Students = chunk,
-                    StudentReports = reportChunk
+                    StudentReports = reportChunk,
+                    Installments = installmentChunk
                 }, cancellationToken);
                 aggregate.Students += result.Students;
                 aggregate.StudentReports += result.StudentReports;
+                aggregate.Installments += result.Installments;
                 if (chunk.Count > 0 && result.Students <= 0)
                 {
                     throw new InvalidOperationException(
@@ -92,6 +113,12 @@ public class ParentsRemoteSyncPublisher
                 {
                     throw new InvalidOperationException(
                         $"السيرفر الخارجي لم يحفظ تقارير الطلاب ({reportChunk.Count} سجل) — تحقق من جدول parents_student_reports على MySQL.");
+                }
+
+                if (installmentChunk is { Count: > 0 } && result.Installments <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"السيرفر الخارجي لم يحفظ أقساط الطلاب ({installmentChunk.Count} سجل) — تحقق من جدول parents_student_installments على MySQL.");
                 }
 
                 uploadedItems += chunk.Count;
@@ -164,6 +191,31 @@ public class ParentsRemoteSyncPublisher
 
                 uploadedItems += chunk.Count;
                 onProgress?.Invoke(uploadedItems, totalItems, $"تم رفع {uploadedItems} من {totalItems} {plan.ItemLabel}");
+            }
+        }
+
+        if (plan.SyncSchedule)
+        {
+            onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع جدول الحصص");
+            var schedulePeriods = await LoadSchedulePeriodsAsync(plan, cancellationToken);
+            var scheduleSettings = await LoadScheduleSettingsAsync(cancellationToken);
+            if (schedulePeriods.Count > 0 || scheduleSettings is not null)
+            {
+                var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
+                {
+                    SchoolId = schoolId,
+                    SchedulePeriods = schedulePeriods,
+                    ScheduleSettings = scheduleSettings
+                }, cancellationToken);
+                aggregate.SchedulePeriods += result.SchedulePeriods;
+                aggregate.ScheduleSettings += result.ScheduleSettings;
+                if (schedulePeriods.Count > 0 && result.SchedulePeriods <= 0)
+                {
+                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ جدول الحصص.");
+                }
+
+                uploadedItems += plan.ChangedSchedule;
+                onProgress?.Invoke(uploadedItems, totalItems, "تم رفع جدول الحصص");
             }
         }
 
@@ -319,6 +371,94 @@ public class ParentsRemoteSyncPublisher
             .ToListAsync(ct);
     }
 
+    private async Task<List<ParentsInstallmentIngestDto>> LoadInstallmentsAsync(
+        ParentsSyncPlan plan,
+        IReadOnlyList<Guid> studentIds,
+        PaymentInstallmentSettingsRecord settings,
+        CancellationToken ct)
+    {
+        if (studentIds.Count == 0)
+        {
+            return [];
+        }
+
+        var students = await _db.StudentRecords
+            .AsNoTracking()
+            .Where(s => s.Status == "active" && studentIds.Contains(s.Id))
+            .ToListAsync(ct);
+
+        return students
+            .SelectMany(s => ParentsInstallmentSyncHelper.BuildForStudent(s, settings))
+            .ToList();
+    }
+
+    private async Task<List<ParentsSchedulePeriodIngestDto>> LoadSchedulePeriodsAsync(ParentsSyncPlan plan, CancellationToken ct)
+    {
+        var query = _db.ClassSchedulePeriods.AsNoTracking();
+        if (plan.ScheduleSince is not null)
+        {
+            query = query.Where(p => p.UpdatedAt > plan.ScheduleSince.Value);
+        }
+
+        var rows = await query
+            .OrderBy(p => p.ClassId)
+            .ThenBy(p => p.SectionId)
+            .ThenBy(p => p.ScheduleDate)
+            .ThenBy(p => p.PeriodNumber)
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        var sectionIds = rows.Select(r => r.SectionId).Distinct().ToList();
+        var subjectIds = rows.Where(r => r.SubjectId.HasValue).Select(r => r.SubjectId!.Value).Distinct().ToList();
+
+        var sectionNames = await _db.SchoolSections.AsNoTracking()
+            .Where(s => sectionIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        var subjectNames = subjectIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Subjects.AsNoTracking()
+                .Where(s => subjectIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return rows.Select(p => new ParentsSchedulePeriodIngestDto
+        {
+            Id = p.Id,
+            ClassId = p.ClassId,
+            SectionId = p.SectionId,
+            SectionName = sectionNames.GetValueOrDefault(p.SectionId),
+            DayName = p.DayName,
+            ScheduleDate = ScheduleDateHelper.ToApiString(p.ScheduleDate),
+            PeriodNumber = p.PeriodNumber,
+            SubjectId = p.SubjectId,
+            SubjectName = p.SubjectId.HasValue ? subjectNames.GetValueOrDefault(p.SubjectId.Value) : null,
+            DurationMinutes = p.DurationMinutes,
+            StartHour = p.StartHour,
+            StartMinute = p.StartMinute,
+            EndHour = p.EndHour,
+            EndMinute = p.EndMinute
+        }).ToList();
+    }
+
+    private async Task<ParentsScheduleSettingsIngestDto?> LoadScheduleSettingsAsync(CancellationToken ct)
+    {
+        var row = await _db.ClassScheduleSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (row is null)
+        {
+            return new ParentsScheduleSettingsIngestDto();
+        }
+
+        return new ParentsScheduleSettingsIngestDto
+        {
+            DayName = row.DayName,
+            PeriodsCount = row.PeriodsCount
+        };
+    }
+
     private async Task<List<ParentsAttendanceIngestDto>> LoadAttendanceAsync(ParentsSyncPlan plan, CancellationToken ct)
     {
         var activeStudentIds = await _db.StudentRecords
@@ -396,11 +536,15 @@ public class ParentsRemoteSyncPublisher
         public int ChangedClasses { get; set; }
         public int ChangedSections { get; set; }
         public int ChangedAttendance { get; set; }
+        public int ChangedInstallments { get; set; }
+        public int ChangedSchedule { get; set; }
         public bool SyncStudents { get; set; }
         public bool SyncClasses { get; set; }
         public bool SyncSections { get; set; }
         public bool SyncAttendance { get; set; }
         public bool SyncStudentReports { get; set; }
+        public bool SyncInstallments { get; set; }
+        public bool SyncSchedule { get; set; }
         public int ChangedStudentReports { get; set; }
         public int TotalItems { get; set; }
         public string ItemLabel { get; set; } = "عنصر";
@@ -408,6 +552,7 @@ public class ParentsRemoteSyncPublisher
         public DateTimeOffset? StudentsSince { get; set; }
         public DateTimeOffset? ClassesSince { get; set; }
         public DateTimeOffset? SectionsSince { get; set; }
+        public DateTimeOffset? ScheduleSince { get; set; }
         public DateTimeOffset CheckpointAt { get; set; }
         public bool HasChanges => TotalItems > 0;
     }

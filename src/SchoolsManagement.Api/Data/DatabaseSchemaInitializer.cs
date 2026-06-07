@@ -152,6 +152,15 @@ public static class DatabaseSchemaInitializer
 
 
 
+        try
+        {
+            ClassScheduleDateBootstrap.EnsureColumns(db);
+            ClassScheduleDateBootstrap.EnsureIndexes(db);
+        }
+        catch (Exception ex) { logger.LogError(ex, "فشل عمود schedule_date لجدول الحصص."); }
+
+
+
         try { ParentsAppTablesBootstrap.EnsureExists(db); }
 
         catch (Exception ex) { logger.LogError(ex, "فشل جداول parents_*."); }

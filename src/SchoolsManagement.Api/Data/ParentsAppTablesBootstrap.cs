@@ -180,6 +180,106 @@ BEGIN
 
 END
 
+
+
+IF OBJECT_ID(N'dbo.parents_student_installments', N'U') IS NULL
+
+BEGIN
+
+    CREATE TABLE dbo.parents_student_installments (
+
+        student_id uniqueidentifier NOT NULL,
+
+        fee_kind nvarchar(40) NOT NULL,
+
+        slot_index int NOT NULL,
+
+        label nvarchar(200) NOT NULL,
+
+        due decimal(18,2) NOT NULL CONSTRAINT DF_parents_inst_due DEFAULT ((0)),
+
+        paid decimal(18,2) NOT NULL CONSTRAINT DF_parents_inst_paid DEFAULT ((0)),
+
+        remaining decimal(18,2) NOT NULL CONSTRAINT DF_parents_inst_rem DEFAULT ((0)),
+
+        is_fully_paid bit NOT NULL CONSTRAINT DF_parents_inst_full DEFAULT ((0)),
+
+        synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_inst_synced DEFAULT (sysdatetimeoffset()),
+
+        CONSTRAINT PK_parents_student_installments PRIMARY KEY (student_id, fee_kind, slot_index)
+
+    );
+
+    CREATE INDEX IX_parents_installments_student ON dbo.parents_student_installments(student_id);
+
+END
+
+
+
+IF OBJECT_ID(N'dbo.parents_schedule_periods', N'U') IS NULL
+
+BEGIN
+
+    CREATE TABLE dbo.parents_schedule_periods (
+
+        id uniqueidentifier NOT NULL CONSTRAINT PK_parents_schedule_periods PRIMARY KEY,
+
+        class_id uniqueidentifier NOT NULL,
+
+        section_id uniqueidentifier NOT NULL,
+
+        section_name nvarchar(300) NULL,
+
+        day_name nvarchar(50) NOT NULL,
+
+        schedule_date date NOT NULL,
+
+        period_number int NOT NULL,
+
+        subject_id uniqueidentifier NULL,
+
+        subject_name nvarchar(300) NULL,
+
+        duration_minutes int NOT NULL CONSTRAINT DF_parents_sched_dur DEFAULT ((45)),
+
+        start_hour int NULL,
+
+        start_minute int NULL,
+
+        end_hour int NULL,
+
+        end_minute int NULL,
+
+        synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_sched_synced DEFAULT (sysdatetimeoffset())
+
+    );
+
+    CREATE INDEX IX_parents_schedule_class_section ON dbo.parents_schedule_periods(class_id, section_id);
+
+    CREATE INDEX IX_parents_schedule_date ON dbo.parents_schedule_periods(schedule_date);
+
+END
+
+
+
+IF OBJECT_ID(N'dbo.parents_schedule_settings', N'U') IS NULL
+
+BEGIN
+
+    CREATE TABLE dbo.parents_schedule_settings (
+
+        Id int NOT NULL CONSTRAINT PK_parents_schedule_settings PRIMARY KEY,
+
+        day_name nvarchar(50) NOT NULL CONSTRAINT DF_parents_sched_set_day DEFAULT (N'الأحد'),
+
+        periods_count int NOT NULL CONSTRAINT DF_parents_sched_set_cnt DEFAULT ((6)),
+
+        synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_sched_set_synced DEFAULT (sysdatetimeoffset())
+
+    );
+
+END
+
 """;
 
 
@@ -327,6 +427,92 @@ CREATE TABLE IF NOT EXISTS parents_student_reports (
     PRIMARY KEY (student_id),
 
     INDEX IX_parents_student_reports_phone (parent_phone)
+
+);
+
+
+
+CREATE TABLE IF NOT EXISTS parents_student_installments (
+
+    student_id char(36) NOT NULL,
+
+    fee_kind varchar(40) NOT NULL,
+
+    slot_index int NOT NULL,
+
+    label varchar(200) NOT NULL,
+
+    due decimal(18,2) NOT NULL DEFAULT 0,
+
+    paid decimal(18,2) NOT NULL DEFAULT 0,
+
+    remaining decimal(18,2) NOT NULL DEFAULT 0,
+
+    is_fully_paid tinyint(1) NOT NULL DEFAULT 0,
+
+    synced_at datetime(6) NOT NULL,
+
+    PRIMARY KEY (student_id, fee_kind, slot_index),
+
+    INDEX IX_parents_installments_student (student_id)
+
+);
+
+
+
+CREATE TABLE IF NOT EXISTS parents_schedule_periods (
+
+    id char(36) NOT NULL,
+
+    class_id char(36) NOT NULL,
+
+    section_id char(36) NOT NULL,
+
+    section_name varchar(300) NULL,
+
+    day_name varchar(50) NOT NULL,
+
+    schedule_date date NOT NULL,
+
+    period_number int NOT NULL,
+
+    subject_id char(36) NULL,
+
+    subject_name varchar(300) NULL,
+
+    duration_minutes int NOT NULL DEFAULT 45,
+
+    start_hour int NULL,
+
+    start_minute int NULL,
+
+    end_hour int NULL,
+
+    end_minute int NULL,
+
+    synced_at datetime(6) NOT NULL,
+
+    PRIMARY KEY (id),
+
+    INDEX IX_parents_schedule_class_section (class_id, section_id),
+
+    INDEX IX_parents_schedule_date (schedule_date)
+
+);
+
+
+
+CREATE TABLE IF NOT EXISTS parents_schedule_settings (
+
+    Id int NOT NULL,
+
+    day_name varchar(50) NOT NULL DEFAULT 'الأحد',
+
+    periods_count int NOT NULL DEFAULT 6,
+
+    synced_at datetime(6) NOT NULL,
+
+    PRIMARY KEY (Id)
 
 );
 

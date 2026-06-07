@@ -155,6 +155,91 @@ public class ParentsAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (payload.Installments is { Count: > 0 })
+        {
+            var studentIds = payload.Installments.Select(i => i.StudentId).Distinct().ToList();
+            var existing = await _db.ParentsStudentInstallments
+                .Where(x => studentIds.Contains(x.StudentId))
+                .ToListAsync(cancellationToken);
+            if (existing.Count > 0)
+            {
+                _db.ParentsStudentInstallments.RemoveRange(existing);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            foreach (var i in payload.Installments)
+            {
+                _db.ParentsStudentInstallments.Add(new ParentsStudentInstallmentRecord
+                {
+                    StudentId = i.StudentId,
+                    FeeKind = i.FeeKind,
+                    SlotIndex = i.SlotIndex,
+                    Label = i.Label,
+                    Due = i.Due,
+                    Paid = i.Paid,
+                    Remaining = i.Remaining,
+                    IsFullyPaid = i.IsFullyPaid,
+                    SyncedAt = syncedAt
+                });
+                result.Installments++;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (payload.SchedulePeriods is { Count: > 0 })
+        {
+            foreach (var p in payload.SchedulePeriods)
+            {
+                if (!DateOnly.TryParse(p.ScheduleDate, out var scheduleDate))
+                {
+                    continue;
+                }
+
+                var row = await _db.ParentsSchedulePeriods.FirstOrDefaultAsync(x => x.Id == p.Id, cancellationToken);
+                if (row is null)
+                {
+                    row = new ParentsSchedulePeriodRecord { Id = p.Id };
+                    _db.ParentsSchedulePeriods.Add(row);
+                }
+
+                row.ClassId = p.ClassId;
+                row.SectionId = p.SectionId;
+                row.SectionName = p.SectionName;
+                row.DayName = p.DayName;
+                row.ScheduleDate = scheduleDate;
+                row.PeriodNumber = p.PeriodNumber;
+                row.SubjectId = p.SubjectId;
+                row.SubjectName = p.SubjectName;
+                row.DurationMinutes = p.DurationMinutes;
+                row.StartHour = p.StartHour;
+                row.StartMinute = p.StartMinute;
+                row.EndHour = p.EndHour;
+                row.EndMinute = p.EndMinute;
+                row.SyncedAt = syncedAt;
+                result.SchedulePeriods++;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (payload.ScheduleSettings is not null)
+        {
+            var settings = payload.ScheduleSettings;
+            var row = await _db.ParentsScheduleSettings.FirstOrDefaultAsync(x => x.Id == 1, cancellationToken);
+            if (row is null)
+            {
+                row = new ParentsScheduleSettingsRecord { Id = 1 };
+                _db.ParentsScheduleSettings.Add(row);
+            }
+
+            row.DayName = settings.DayName;
+            row.PeriodsCount = settings.PeriodsCount;
+            row.SyncedAt = syncedAt;
+            result.ScheduleSettings = 1;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         return result;
     }
 }

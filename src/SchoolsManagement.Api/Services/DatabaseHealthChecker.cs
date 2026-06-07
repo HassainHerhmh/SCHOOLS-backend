@@ -29,7 +29,10 @@ public sealed class DatabaseHealthChecker
         "parents_student_reports",
         "parents_classes",
         "parents_sections",
-        "parents_attendance_summary"
+        "parents_attendance_summary",
+        "parents_student_installments",
+        "parents_schedule_periods",
+        "parents_schedule_settings"
     ];
 
     public async Task<DatabaseHealthReport> CheckAsync(
@@ -47,7 +50,7 @@ public sealed class DatabaseHealthChecker
 
         if (isMySql && ConnectionStringResolver.HasMysqlEnvVars())
         {
-            report.Warnings.Add("Railway MySQL — جداول parents_* الأربعة فقط (بدون نظام المدارس الكامل).");
+            report.Warnings.Add("Railway MySQL — جداول parents_* لتطبيق أولياء الأمور (بدون نظام المدارس الكامل).");
         }
 
         try

@@ -49,11 +49,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<GradeRecord> Grades => Set<GradeRecord>();
     public DbSet<ClassScheduleSettingsRecord> ClassScheduleSettings => Set<ClassScheduleSettingsRecord>();
     public DbSet<ClassSchedulePeriodRecord> ClassSchedulePeriods => Set<ClassSchedulePeriodRecord>();
+    public DbSet<ClassScheduleCustomItemRecord> ClassScheduleCustomItems => Set<ClassScheduleCustomItemRecord>();
+    public DbSet<PaymentInstallmentSettingsRecord> PaymentInstallmentSettings => Set<PaymentInstallmentSettingsRecord>();
     public DbSet<ParentsStudentSummaryRecord> ParentsStudentSummaries => Set<ParentsStudentSummaryRecord>();
     public DbSet<ParentsClassPublishRecord> ParentsClassPublishes => Set<ParentsClassPublishRecord>();
     public DbSet<ParentsSectionPublishRecord> ParentsSectionPublishes => Set<ParentsSectionPublishRecord>();
     public DbSet<ParentsAttendanceSummaryRecord> ParentsAttendanceSummaries => Set<ParentsAttendanceSummaryRecord>();
     public DbSet<ParentsStudentReportRecord> ParentsStudentReports => Set<ParentsStudentReportRecord>();
+    public DbSet<ParentsStudentInstallmentRecord> ParentsStudentInstallments => Set<ParentsStudentInstallmentRecord>();
+    public DbSet<ParentsSchedulePeriodRecord> ParentsSchedulePeriods => Set<ParentsSchedulePeriodRecord>();
+    public DbSet<ParentsScheduleSettingsRecord> ParentsScheduleSettings => Set<ParentsScheduleSettingsRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -150,6 +155,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<ParentsAttendanceSummaryRecord>(e =>
         {
             e.HasKey(x => new { x.StudentId, x.Date });
+        });
+
+        builder.Entity<ParentsStudentInstallmentRecord>(e =>
+        {
+            e.HasKey(x => new { x.StudentId, x.FeeKind, x.SlotIndex });
+        });
+
+        builder.Entity<ParentsScheduleSettingsRecord>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
         });
     }
 }

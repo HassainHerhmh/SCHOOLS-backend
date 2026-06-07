@@ -8,6 +8,9 @@ public class ParentsSyncIngestPayload
     public List<ParentsSectionIngestDto>? Sections { get; set; }
     public List<ParentsAttendanceIngestDto>? Attendance { get; set; }
     public List<ParentsStudentReportIngestDto>? StudentReports { get; set; }
+    public List<ParentsInstallmentIngestDto>? Installments { get; set; }
+    public List<ParentsSchedulePeriodIngestDto>? SchedulePeriods { get; set; }
+    public ParentsScheduleSettingsIngestDto? ScheduleSettings { get; set; }
 }
 
 public class ParentsStudentReportIngestDto
@@ -74,6 +77,42 @@ public class ParentsAttendanceIngestDto
     public string Status { get; set; } = string.Empty;
 }
 
+public class ParentsInstallmentIngestDto
+{
+    public Guid StudentId { get; set; }
+    public string FeeKind { get; set; } = string.Empty;
+    public int SlotIndex { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public decimal Due { get; set; }
+    public decimal Paid { get; set; }
+    public decimal Remaining { get; set; }
+    public bool IsFullyPaid { get; set; }
+}
+
+public class ParentsSchedulePeriodIngestDto
+{
+    public Guid Id { get; set; }
+    public Guid ClassId { get; set; }
+    public Guid SectionId { get; set; }
+    public string? SectionName { get; set; }
+    public string DayName { get; set; } = string.Empty;
+    public string ScheduleDate { get; set; } = string.Empty;
+    public int PeriodNumber { get; set; }
+    public Guid? SubjectId { get; set; }
+    public string? SubjectName { get; set; }
+    public int DurationMinutes { get; set; }
+    public int? StartHour { get; set; }
+    public int? StartMinute { get; set; }
+    public int? EndHour { get; set; }
+    public int? EndMinute { get; set; }
+}
+
+public class ParentsScheduleSettingsIngestDto
+{
+    public string DayName { get; set; } = "الأحد";
+    public int PeriodsCount { get; set; } = 6;
+}
+
 public class ParentsIngestResult
 {
     public int Students { get; set; }
@@ -81,8 +120,12 @@ public class ParentsIngestResult
     public int Sections { get; set; }
     public int Attendance { get; set; }
     public int StudentReports { get; set; }
+    public int Installments { get; set; }
+    public int SchedulePeriods { get; set; }
+    public int ScheduleSettings { get; set; }
 
-    public int Total => Students + Classes + Sections + Attendance + StudentReports;
+    public int Total => Students + Classes + Sections + Attendance + StudentReports
+                        + Installments + SchedulePeriods + ScheduleSettings;
 }
 
 public class ParentsRemoteDataCounts
@@ -92,6 +135,8 @@ public class ParentsRemoteDataCounts
     public int Sections { get; set; }
     public int Attendance { get; set; }
     public int StudentReports { get; set; }
+    public int Installments { get; set; }
+    public int SchedulePeriods { get; set; }
 }
 
 /// <summary>نتيجة رفع + تحقق من وجود البيانات على سيرفر رويال (للعرض في الواجهة).</summary>

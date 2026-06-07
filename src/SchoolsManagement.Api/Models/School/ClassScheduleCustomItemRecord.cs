@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SchoolsManagement.Api.Models.School;
 
-[Table("class_schedule_periods")]
-public class ClassSchedulePeriodRecord
+[Table("class_schedule_custom_items")]
+public class ClassScheduleCustomItemRecord
 {
     [Key]
     [Column("id")]
@@ -23,26 +23,24 @@ public class ClassSchedulePeriodRecord
     [Column("schedule_date", TypeName = "date")]
     public DateOnly ScheduleDate { get; set; }
 
-    [Column("period_number")]
-    public int PeriodNumber { get; set; }
+    [Column("item_name")]
+    [MaxLength(200)]
+    public string ItemName { get; set; } = string.Empty;
 
-    [Column("subject_id")]
-    public Guid? SubjectId { get; set; }
-
-    [Column("duration_minutes")]
-    public int DurationMinutes { get; set; } = 45;
+    [Column("position_number")]
+    public int PositionNumber { get; set; }
 
     [Column("start_hour")]
-    public int? StartHour { get; set; }
+    public int StartHour { get; set; }
 
     [Column("start_minute")]
-    public int? StartMinute { get; set; }
+    public int StartMinute { get; set; }
 
     [Column("end_hour")]
-    public int? EndHour { get; set; }
+    public int EndHour { get; set; }
 
     [Column("end_minute")]
-    public int? EndMinute { get; set; }
+    public int EndMinute { get; set; }
 
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; }

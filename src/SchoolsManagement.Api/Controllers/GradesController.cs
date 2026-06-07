@@ -53,22 +53,29 @@ public class GradesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<object>> Upsert([FromBody] UpsertGradeRequest body, CancellationToken ct)
     {
-        if (body.StudentId == Guid.Empty || body.SubjectId == Guid.Empty)
+        var normalized = await NormalizeAndValidateAsync(body, ct);
+        if (normalized.Error is not null)
         {
-            return BadRequest(new { message = "الطالب والمادة مطلوبان." });
+            return normalized.Error;
         }
 
-        var percentage = body.MaxScore > 0 ? body.Score / body.MaxScore * 100 : 0;
+        var req = normalized.Request!;
+        var percentage = req.MaxScore > 0 ? req.Score / req.MaxScore * 100 : 0;
+
         GradeRecord? entity = null;
-        if (body.Id.HasValue)
+        if (req.Id.HasValue && req.Id != Guid.Empty)
         {
-            entity = await _db.Grades.FirstOrDefaultAsync(g => g.Id == body.Id.Value, ct);
+            entity = await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.Id.Value, ct);
+            if (entity is not null && entity.StudentId != req.StudentId)
+            {
+                return BadRequest(new { message = "معرّف الدرجة لا يطابق الطالب." });
+            }
         }
 
-        if (entity is null && body.ExamId.HasValue)
+        if (entity is null && req.ExamId.HasValue && req.ExamId != Guid.Empty)
         {
             entity = await _db.Grades.FirstOrDefaultAsync(
-                g => g.StudentId == body.StudentId && g.ExamId == body.ExamId, ct);
+                g => g.StudentId == req.StudentId && g.ExamId == req.ExamId, ct);
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -82,25 +89,116 @@ public class GradesController : ControllerBase
             _db.Grades.Add(entity);
         }
 
-        entity.StudentId = body.StudentId;
-        entity.SubjectId = body.SubjectId;
-        entity.SubjectName = body.SubjectName;
-        entity.ExamId = body.ExamId;
-        entity.ExamType = body.ExamType ?? "exam";
-        entity.ExamName = body.ExamName;
-        entity.Score = body.Score;
-        entity.MaxScore = body.MaxScore;
+        entity.StudentId = req.StudentId;
+        entity.SubjectId = req.SubjectId;
+        entity.SubjectName = req.SubjectName;
+        entity.ExamId = req.ExamId;
+        entity.ExamType = req.ExamType ?? "exam";
+        entity.ExamName = req.ExamName;
+        entity.Score = req.Score;
+        entity.MaxScore = req.MaxScore;
         entity.Percentage = percentage;
-        entity.ExamDate = body.ExamDate;
-        entity.AcademicYear = body.AcademicYear;
-        entity.Semester = body.Semester ?? "first";
-        entity.Notes = body.Notes;
-        entity.CreatedBy = body.CreatedBy ?? "المدير";
+        entity.ExamDate = req.ExamDate;
+        entity.AcademicYear = req.AcademicYear;
+        entity.Semester = req.Semester ?? "first";
+        entity.Notes = req.Notes;
+        entity.CreatedBy = req.CreatedBy ?? "المدير";
         entity.UpdatedAt = now;
 
         await _db.SaveChangesAsync(ct);
         return Ok(ToDto(entity));
     }
+
+    private async Task<(UpsertGradeRequest? Request, ActionResult? Error)> NormalizeAndValidateAsync(
+        UpsertGradeRequest body,
+        CancellationToken ct)
+    {
+        if (body.StudentId == Guid.Empty || body.SubjectId == Guid.Empty)
+        {
+            return (null, BadRequest(new { message = "الطالب والمادة مطلوبان." }));
+        }
+
+        var studentExists = await _db.StudentRecords.AsNoTracking()
+            .AnyAsync(s => s.Id == body.StudentId, ct);
+        if (!studentExists)
+        {
+            return (null, BadRequest(new { message = "الطالب غير موجود." }));
+        }
+
+        var subject = await _db.Subjects.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == body.SubjectId, ct);
+        if (subject is null)
+        {
+            return (null, BadRequest(new { message = "المادة غير موجودة." }));
+        }
+
+        ExamRecord? exam = null;
+        if (body.ExamId.HasValue && body.ExamId != Guid.Empty)
+        {
+            exam = await _db.Exams.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == body.ExamId.Value, ct);
+            if (exam is null)
+            {
+                return (null, BadRequest(new { message = "الاختبار/النشاط غير موجود." }));
+            }
+
+            if (exam.SubjectId != body.SubjectId)
+            {
+                return (null, BadRequest(new { message = "الاختبار لا يتبع المادة المحددة." }));
+            }
+        }
+
+        var maxScore = exam?.MaxScore ?? body.MaxScore;
+        if (maxScore <= 0)
+        {
+            maxScore = 100;
+        }
+
+        var score = body.Score;
+        if (score < 0)
+        {
+            score = 0;
+        }
+
+        if (score > maxScore)
+        {
+            score = maxScore;
+        }
+
+        var semester = NormalizeSemester(body.Semester);
+        if (exam is not null && !string.IsNullOrWhiteSpace(exam.Semester))
+        {
+            semester = NormalizeSemester(exam.Semester);
+        }
+
+        var academicYear = body.AcademicYear;
+        if (exam?.AcademicYear is > 0)
+        {
+            academicYear = exam.AcademicYear.Value;
+        }
+        else if (academicYear <= 0)
+        {
+            academicYear = DateTime.UtcNow.Year;
+        }
+
+        body.SubjectName = subject.Name;
+        body.Score = score;
+        body.MaxScore = maxScore;
+        body.Semester = semester;
+        body.AcademicYear = academicYear;
+
+        if (exam is not null)
+        {
+            body.ExamName = exam.Title;
+            body.ExamType = string.IsNullOrWhiteSpace(exam.ActivityType) ? "exam" : exam.ActivityType;
+            body.ExamDate = exam.ExamDate ?? body.ExamDate;
+        }
+
+        return (body, null);
+    }
+
+    private static string NormalizeSemester(string? semester) =>
+        string.Equals(semester, "second", StringComparison.OrdinalIgnoreCase) ? "second" : "first";
 
     private static object ToDto(GradeRecord g) => new
     {

@@ -97,11 +97,35 @@ BEGIN
         subject_id uniqueidentifier NOT NULL,
         title nvarchar(250) NOT NULL,
         exam_date date NULL,
+        exam_month nvarchar(30) NULL,
+        semester nvarchar(20) NOT NULL CONSTRAINT DF_exams_semester DEFAULT (N'first'),
+        activity_type nvarchar(50) NULL,
+        academic_year int NULL,
         max_score decimal(18,2) NOT NULL CONSTRAINT DF_exams_max DEFAULT ((100)),
         created_at datetimeoffset(7) NULL,
         updated_at datetimeoffset(7) NULL
     );
     CREATE INDEX IX_exams_subject ON dbo.exams(subject_id);
+END
+
+IF COL_LENGTH(N'dbo.exams', N'exam_month') IS NULL
+BEGIN
+    ALTER TABLE dbo.exams ADD exam_month nvarchar(30) NULL;
+END
+
+IF COL_LENGTH(N'dbo.exams', N'semester') IS NULL
+BEGIN
+    ALTER TABLE dbo.exams ADD semester nvarchar(20) NOT NULL CONSTRAINT DF_exams_semester DEFAULT (N'first');
+END
+
+IF COL_LENGTH(N'dbo.exams', N'activity_type') IS NULL
+BEGIN
+    ALTER TABLE dbo.exams ADD activity_type nvarchar(50) NULL;
+END
+
+IF COL_LENGTH(N'dbo.exams', N'academic_year') IS NULL
+BEGIN
+    ALTER TABLE dbo.exams ADD academic_year int NULL;
 END
 
 IF OBJECT_ID(N'dbo.grade_rules', N'U') IS NULL
@@ -165,6 +189,7 @@ BEGIN
         class_id uniqueidentifier NOT NULL,
         section_id uniqueidentifier NOT NULL,
         day_name nvarchar(50) NOT NULL,
+        schedule_date date NOT NULL,
         period_number int NOT NULL,
         subject_id uniqueidentifier NULL,
         duration_minutes int NOT NULL CONSTRAINT DF_class_schedule_duration DEFAULT ((45)),
@@ -173,6 +198,63 @@ BEGIN
         CONSTRAINT UQ_class_schedule_slot UNIQUE (class_id, section_id, day_name, period_number)
     );
     CREATE INDEX IX_class_schedule_periods_class ON dbo.class_schedule_periods(class_id, day_name);
+END
+
+IF COL_LENGTH(N'dbo.class_schedule_periods', N'start_hour') IS NULL
+BEGIN
+    ALTER TABLE dbo.class_schedule_periods ADD start_hour int NULL;
+    ALTER TABLE dbo.class_schedule_periods ADD start_minute int NULL;
+    ALTER TABLE dbo.class_schedule_periods ADD end_hour int NULL;
+    ALTER TABLE dbo.class_schedule_periods ADD end_minute int NULL;
+END
+
+IF OBJECT_ID(N'dbo.class_schedule_custom_items', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.class_schedule_custom_items (
+        id uniqueidentifier NOT NULL CONSTRAINT PK_class_schedule_custom_items PRIMARY KEY,
+        class_id uniqueidentifier NOT NULL,
+        section_id uniqueidentifier NOT NULL,
+        day_name nvarchar(50) NOT NULL,
+        schedule_date date NOT NULL,
+        item_name nvarchar(200) NOT NULL,
+        position_number int NOT NULL,
+        start_hour int NOT NULL,
+        start_minute int NOT NULL,
+        end_hour int NOT NULL,
+        end_minute int NOT NULL,
+        created_at datetimeoffset(7) NOT NULL CONSTRAINT DF_class_schedule_custom_created DEFAULT (sysdatetimeoffset()),
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_class_schedule_custom_updated DEFAULT (sysdatetimeoffset())
+    );
+    CREATE INDEX IX_class_schedule_custom_class ON dbo.class_schedule_custom_items(class_id, day_name);
+END
+
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID(N'dbo.class_schedule_custom_items')
+      AND name = N'UQ_class_schedule_custom_slot')
+BEGIN
+    ALTER TABLE dbo.class_schedule_custom_items DROP CONSTRAINT UQ_class_schedule_custom_slot;
+END
+
+IF OBJECT_ID(N'dbo.payment_installment_settings', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.payment_installment_settings (
+        id int NOT NULL CONSTRAINT PK_payment_installment_settings PRIMARY KEY,
+        tuition_installments_count int NOT NULL CONSTRAINT DF_payment_inst_tuition DEFAULT ((6)),
+        bus_installments_count int NOT NULL CONSTRAINT DF_payment_inst_bus DEFAULT ((2)),
+        tuition_month_labels nvarchar(max) NULL,
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_payment_inst_updated DEFAULT (sysdatetimeoffset())
+    );
+    INSERT INTO dbo.payment_installment_settings (id, tuition_installments_count, bus_installments_count, tuition_month_labels, updated_at)
+    VALUES (1, 6, 2, N'["سبتمبر","أكتوبر","نوفمبر","ديسمبر","يناير","فبراير"]', sysdatetimeoffset());
+END
+
+IF COL_LENGTH(N'dbo.payment_installment_settings', N'tuition_month_labels') IS NULL
+BEGIN
+    ALTER TABLE dbo.payment_installment_settings ADD tuition_month_labels nvarchar(max) NULL;
+    UPDATE dbo.payment_installment_settings
+    SET tuition_month_labels = N'["سبتمبر","أكتوبر","نوفمبر","ديسمبر","يناير","فبراير"]'
+    WHERE id = 1 AND (tuition_month_labels IS NULL OR LTRIM(RTRIM(tuition_month_labels)) = N'');
 END
 """;
 
