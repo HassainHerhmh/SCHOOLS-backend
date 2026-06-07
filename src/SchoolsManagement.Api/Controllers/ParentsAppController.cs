@@ -242,12 +242,79 @@ public class ParentsAppController : ControllerBase
             })
             .ToListAsync(ct);
 
+        var customQuery = _db.ParentsScheduleCustomItems.AsNoTracking()
+            .Where(c => c.ClassId == classId && c.SectionId == sectionId);
+        if (dateFilter.HasValue)
+        {
+            customQuery = customQuery.Where(c => c.ScheduleDate == dateFilter.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(day_name))
+        {
+            var day = day_name.Trim();
+            customQuery = customQuery.Where(c => c.DayName == day);
+        }
+
+        var customItems = await customQuery
+            .OrderBy(c => c.PositionNumber)
+            .Select(c => new
+            {
+                id = c.Id,
+                class_id = c.ClassId,
+                section_id = c.SectionId,
+                section_name = c.SectionName,
+                day_name = c.DayName,
+                schedule_date = c.ScheduleDate.ToString("yyyy-MM-dd"),
+                item_name = c.ItemName,
+                position_number = c.PositionNumber,
+                start_hour = c.StartHour,
+                start_minute = c.StartMinute,
+                end_hour = c.EndHour,
+                end_minute = c.EndMinute
+            })
+            .ToListAsync(ct);
+
+        var timelineEntries = rows
+            .Select(p => (
+                SortKey: (p.start_hour ?? 0) * 60 + (p.start_minute ?? 0),
+                Entry: (object)new
+                {
+                    kind = "period",
+                    p.id,
+                    p.period_number,
+                    subject_name = p.subject_name,
+                    item_name = (string?)null,
+                    p.start_hour,
+                    p.start_minute,
+                    p.end_hour,
+                    p.end_minute
+                }))
+            .Concat(customItems.Select(c => (
+                SortKey: c.start_hour * 60 + c.start_minute,
+                Entry: (object)new
+                {
+                    kind = "custom",
+                    id = c.id,
+                    period_number = (int?)null,
+                    subject_name = (string?)null,
+                    item_name = c.item_name,
+                    start_hour = (int?)c.start_hour,
+                    start_minute = (int?)c.start_minute,
+                    end_hour = (int?)c.end_hour,
+                    end_minute = (int?)c.end_minute
+                })))
+            .OrderBy(x => x.SortKey)
+            .Select(x => x.Entry)
+            .ToList();
+
         return Ok(new
         {
             class_id = classId,
             section_id = sectionId,
             schedule_date = dateFilter?.ToString("yyyy-MM-dd"),
-            periods = rows
+            periods = rows,
+            custom_items = customItems,
+            timeline = timelineEntries
         });
     }
 

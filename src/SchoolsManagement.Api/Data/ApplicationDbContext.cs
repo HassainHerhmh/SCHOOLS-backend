@@ -59,6 +59,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ParentsStudentInstallmentRecord> ParentsStudentInstallments => Set<ParentsStudentInstallmentRecord>();
     public DbSet<ParentsSchedulePeriodRecord> ParentsSchedulePeriods => Set<ParentsSchedulePeriodRecord>();
     public DbSet<ParentsScheduleSettingsRecord> ParentsScheduleSettings => Set<ParentsScheduleSettingsRecord>();
+    public DbSet<ParentsScheduleCustomItemRecord> ParentsScheduleCustomItems => Set<ParentsScheduleCustomItemRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

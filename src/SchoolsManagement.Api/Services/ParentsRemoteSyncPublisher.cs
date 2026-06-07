@@ -198,20 +198,28 @@ public class ParentsRemoteSyncPublisher
         {
             onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع جدول الحصص");
             var schedulePeriods = await LoadSchedulePeriodsAsync(plan, cancellationToken);
+            var scheduleCustomItems = await LoadScheduleCustomItemsAsync(plan, cancellationToken);
             var scheduleSettings = await LoadScheduleSettingsAsync(cancellationToken);
-            if (schedulePeriods.Count > 0 || scheduleSettings is not null)
+            if (schedulePeriods.Count > 0 || scheduleCustomItems.Count > 0 || scheduleSettings is not null)
             {
                 var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
                 {
                     SchoolId = schoolId,
                     SchedulePeriods = schedulePeriods,
+                    ScheduleCustomItems = scheduleCustomItems,
                     ScheduleSettings = scheduleSettings
                 }, cancellationToken);
                 aggregate.SchedulePeriods += result.SchedulePeriods;
+                aggregate.ScheduleCustomItems += result.ScheduleCustomItems;
                 aggregate.ScheduleSettings += result.ScheduleSettings;
                 if (schedulePeriods.Count > 0 && result.SchedulePeriods <= 0)
                 {
                     throw new InvalidOperationException("السيرفر الخارجي لم يحفظ جدول الحصص.");
+                }
+
+                if (scheduleCustomItems.Count > 0 && result.ScheduleCustomItems <= 0)
+                {
+                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ بنود الجدول (طابور/استراحة).");
                 }
 
                 uploadedItems += plan.ChangedSchedule;
@@ -437,6 +445,45 @@ public class ParentsRemoteSyncPublisher
             SubjectId = p.SubjectId,
             SubjectName = p.SubjectId.HasValue ? subjectNames.GetValueOrDefault(p.SubjectId.Value) : null,
             DurationMinutes = p.DurationMinutes,
+            StartHour = p.StartHour,
+            StartMinute = p.StartMinute,
+            EndHour = p.EndHour,
+            EndMinute = p.EndMinute
+        }).ToList();
+    }
+
+    private async Task<List<ParentsScheduleCustomItemIngestDto>> LoadScheduleCustomItemsAsync(
+        ParentsSyncPlan plan,
+        CancellationToken ct)
+    {
+        // البنود (طابور/استراحة) قليلة — نرفعها كلها عند أي مزامنة جدول.
+        var rows = await _db.ClassScheduleCustomItems.AsNoTracking()
+            .OrderBy(p => p.ClassId)
+            .ThenBy(p => p.SectionId)
+            .ThenBy(p => p.ScheduleDate)
+            .ThenBy(p => p.PositionNumber)
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        var sectionIds = rows.Select(r => r.SectionId).Distinct().ToList();
+        var sectionNames = await _db.SchoolSections.AsNoTracking()
+            .Where(s => sectionIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+        return rows.Select(p => new ParentsScheduleCustomItemIngestDto
+        {
+            Id = p.Id,
+            ClassId = p.ClassId,
+            SectionId = p.SectionId,
+            SectionName = sectionNames.GetValueOrDefault(p.SectionId),
+            DayName = p.DayName,
+            ScheduleDate = ScheduleDateHelper.ToApiString(p.ScheduleDate),
+            ItemName = p.ItemName,
+            PositionNumber = p.PositionNumber,
             StartHour = p.StartHour,
             StartMinute = p.StartMinute,
             EndHour = p.EndHour,

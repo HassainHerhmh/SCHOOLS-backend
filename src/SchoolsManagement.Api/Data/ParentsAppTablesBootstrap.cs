@@ -280,6 +280,48 @@ BEGIN
 
 END
 
+
+
+IF OBJECT_ID(N'dbo.parents_schedule_custom_items', N'U') IS NULL
+
+BEGIN
+
+    CREATE TABLE dbo.parents_schedule_custom_items (
+
+        id uniqueidentifier NOT NULL CONSTRAINT PK_parents_schedule_custom_items PRIMARY KEY,
+
+        class_id uniqueidentifier NOT NULL,
+
+        section_id uniqueidentifier NOT NULL,
+
+        section_name nvarchar(300) NULL,
+
+        day_name nvarchar(50) NOT NULL,
+
+        schedule_date date NOT NULL,
+
+        item_name nvarchar(200) NOT NULL,
+
+        position_number int NOT NULL,
+
+        start_hour int NOT NULL,
+
+        start_minute int NOT NULL,
+
+        end_hour int NOT NULL,
+
+        end_minute int NOT NULL,
+
+        synced_at datetimeoffset(7) NOT NULL CONSTRAINT DF_parents_sched_custom_synced DEFAULT (sysdatetimeoffset())
+
+    );
+
+    CREATE INDEX IX_parents_sched_custom_class_section ON dbo.parents_schedule_custom_items(class_id, section_id);
+
+    CREATE INDEX IX_parents_sched_custom_date ON dbo.parents_schedule_custom_items(schedule_date);
+
+END
+
 """;
 
 
@@ -513,6 +555,44 @@ CREATE TABLE IF NOT EXISTS parents_schedule_settings (
     synced_at datetime(6) NOT NULL,
 
     PRIMARY KEY (Id)
+
+);
+
+
+
+CREATE TABLE IF NOT EXISTS parents_schedule_custom_items (
+
+    id char(36) NOT NULL,
+
+    class_id char(36) NOT NULL,
+
+    section_id char(36) NOT NULL,
+
+    section_name varchar(300) NULL,
+
+    day_name varchar(50) NOT NULL,
+
+    schedule_date date NOT NULL,
+
+    item_name varchar(200) NOT NULL,
+
+    position_number int NOT NULL,
+
+    start_hour int NOT NULL,
+
+    start_minute int NOT NULL,
+
+    end_hour int NOT NULL,
+
+    end_minute int NOT NULL,
+
+    synced_at datetime(6) NOT NULL,
+
+    PRIMARY KEY (id),
+
+    INDEX IX_parents_sched_custom_class_section (class_id, section_id),
+
+    INDEX IX_parents_sched_custom_date (schedule_date)
 
 );
 

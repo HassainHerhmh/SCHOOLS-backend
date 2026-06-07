@@ -223,6 +223,40 @@ public class ParentsAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (payload.ScheduleCustomItems is { Count: > 0 })
+        {
+            foreach (var c in payload.ScheduleCustomItems)
+            {
+                if (!DateOnly.TryParse(c.ScheduleDate, out var scheduleDate))
+                {
+                    continue;
+                }
+
+                var row = await _db.ParentsScheduleCustomItems.FirstOrDefaultAsync(x => x.Id == c.Id, cancellationToken);
+                if (row is null)
+                {
+                    row = new ParentsScheduleCustomItemRecord { Id = c.Id };
+                    _db.ParentsScheduleCustomItems.Add(row);
+                }
+
+                row.ClassId = c.ClassId;
+                row.SectionId = c.SectionId;
+                row.SectionName = c.SectionName;
+                row.DayName = c.DayName;
+                row.ScheduleDate = scheduleDate;
+                row.ItemName = c.ItemName;
+                row.PositionNumber = c.PositionNumber;
+                row.StartHour = c.StartHour;
+                row.StartMinute = c.StartMinute;
+                row.EndHour = c.EndHour;
+                row.EndMinute = c.EndMinute;
+                row.SyncedAt = syncedAt;
+                result.ScheduleCustomItems++;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         if (payload.ScheduleSettings is not null)
         {
             var settings = payload.ScheduleSettings;

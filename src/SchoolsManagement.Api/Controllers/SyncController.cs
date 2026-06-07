@@ -20,6 +20,7 @@ public class SyncController : ControllerBase
     private const string SectionsCheckpointKey = "parents.sections";
     private const string AttendanceCheckpointKey = "parents.attendance";
     private const string ScheduleCheckpointKey = "parents.schedule";
+    private const string InstallmentsCheckpointKey = "parents.installments";
 
     private static readonly ConcurrentDictionary<string, ParentsSyncProgressState> ParentsSyncProgressBySession = new();
 
@@ -97,7 +98,8 @@ public class SyncController : ControllerBase
                 Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken),
                 StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken),
                 Installments = await _db.ParentsStudentInstallments.CountAsync(cancellationToken),
-                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken)
+                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken),
+                ScheduleCustomItems = await _db.ParentsScheduleCustomItems.CountAsync(cancellationToken)
             };
             return Ok(counts);
         }
@@ -341,12 +343,14 @@ public class SyncController : ControllerBase
         checkpoints.TryGetValue(SectionsCheckpointKey, out var sectionsSince);
         checkpoints.TryGetValue(AttendanceCheckpointKey, out var attendanceSince);
         checkpoints.TryGetValue(ScheduleCheckpointKey, out var scheduleSince);
+        checkpoints.TryGetValue(InstallmentsCheckpointKey, out var installmentsSince);
 
         var hasStudentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(StudentsCheckpointKey);
         var hasClassesCheckpoint = !forceFullSync && checkpoints.ContainsKey(ClassesCheckpointKey);
         var hasSectionsCheckpoint = !forceFullSync && checkpoints.ContainsKey(SectionsCheckpointKey);
         var hasAttendanceCheckpoint = !forceFullSync && checkpoints.ContainsKey(AttendanceCheckpointKey);
         var hasScheduleCheckpoint = !forceFullSync && checkpoints.ContainsKey(ScheduleCheckpointKey);
+        var hasInstallmentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(InstallmentsCheckpointKey);
 
         var changedStudents = hasStudentsCheckpoint
             ? await _db.StudentRecords.CountAsync(s =>
@@ -374,9 +378,15 @@ public class SyncController : ControllerBase
                 activeStudentIds.Contains(a.StudentId) && a.CreatedAt > attendanceSince, cancellationToken)
             : await _db.AttendanceRecords.CountAsync(a => activeStudentIds.Contains(a.StudentId), cancellationToken);
 
-        var changedSchedule = hasScheduleCheckpoint
+        var changedSchedulePeriods = hasScheduleCheckpoint
             ? await _db.ClassSchedulePeriods.CountAsync(p => p.UpdatedAt > scheduleSince, cancellationToken)
             : await _db.ClassSchedulePeriods.CountAsync(cancellationToken);
+
+        var changedScheduleCustom = hasScheduleCheckpoint
+            ? await _db.ClassScheduleCustomItems.CountAsync(p => p.UpdatedAt > scheduleSince, cancellationToken)
+            : await _db.ClassScheduleCustomItems.CountAsync(cancellationToken);
+
+        var changedSchedule = changedSchedulePeriods + changedScheduleCustom;
 
         if (hasScheduleCheckpoint)
         {
