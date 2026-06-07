@@ -189,7 +189,7 @@ public class ParentsAppController : ControllerBase
             return BadRequest(new { message = "معرّف الطالب أو الصف والشعبة مطلوب." });
         }
 
-        var query = _db.ParentsSchedulePeriods.AsNoTracking()
+        var baseQuery = _db.ParentsSchedulePeriods.AsNoTracking()
             .Where(p => p.ClassId == classId && p.SectionId == sectionId);
 
         DateOnly? dateFilter = null;
@@ -201,20 +201,42 @@ public class ParentsAppController : ControllerBase
             }
 
             dateFilter = parsed;
-            query = query.Where(p => p.ScheduleDate == parsed);
+        }
+        else if (!string.IsNullOrWhiteSpace(day_name))
+        {
+            var day = day_name.Trim();
+            dateFilter = await baseQuery
+                .Where(p => p.DayName == day)
+                .MaxAsync(p => (DateOnly?)p.ScheduleDate, ct);
+            if (dateFilter is null)
+            {
+                return Ok(new
+                {
+                    class_id = classId,
+                    section_id = sectionId,
+                    schedule_date = (string?)null,
+                    entries = Array.Empty<object>(),
+                    timeline = Array.Empty<object>()
+                });
+            }
         }
         else
         {
-            var latestDate = await query.MaxAsync(p => (DateOnly?)p.ScheduleDate, ct);
-            if (latestDate is null)
+            dateFilter = await baseQuery.MaxAsync(p => (DateOnly?)p.ScheduleDate, ct);
+            if (dateFilter is null)
             {
-                return Ok(Array.Empty<object>());
+                return Ok(new
+                {
+                    class_id = classId,
+                    section_id = sectionId,
+                    schedule_date = (string?)null,
+                    entries = Array.Empty<object>(),
+                    timeline = Array.Empty<object>()
+                });
             }
-
-            dateFilter = latestDate;
-            query = query.Where(p => p.ScheduleDate == latestDate);
         }
 
+        var query = baseQuery.Where(p => p.ScheduleDate == dateFilter.Value);
         if (!string.IsNullOrWhiteSpace(day_name))
         {
             var day = day_name.Trim();

@@ -187,6 +187,11 @@ public class ParentsAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (payload.ScheduleFullReplace)
+        {
+            await _db.ParentsSchedulePeriods.ExecuteDeleteAsync(cancellationToken);
+        }
+
         if (payload.SchedulePeriods is { Count: > 0 })
         {
             foreach (var p in payload.SchedulePeriods)
@@ -196,32 +201,33 @@ public class ParentsAppIngestService
                     continue;
                 }
 
-                var row = await _db.ParentsSchedulePeriods.FirstOrDefaultAsync(x => x.Id == p.Id, cancellationToken);
-                if (row is null)
+                _db.ParentsSchedulePeriods.Add(new ParentsSchedulePeriodRecord
                 {
-                    row = new ParentsSchedulePeriodRecord { Id = p.Id };
-                    _db.ParentsSchedulePeriods.Add(row);
-                }
-
-                row.ClassId = p.ClassId;
-                row.SectionId = p.SectionId;
-                row.SectionName = p.SectionName;
-                row.DayName = p.DayName;
-                row.ScheduleDate = scheduleDate;
-                row.PeriodNumber = p.PeriodNumber;
-                row.EntryKind = string.IsNullOrWhiteSpace(p.EntryKind) ? "period" : p.EntryKind.Trim();
-                row.ItemName = p.ItemName;
-                row.SubjectId = p.SubjectId;
-                row.SubjectName = p.SubjectName;
-                row.DurationMinutes = p.DurationMinutes;
-                row.StartHour = p.StartHour;
-                row.StartMinute = p.StartMinute;
-                row.EndHour = p.EndHour;
-                row.EndMinute = p.EndMinute;
-                row.SyncedAt = syncedAt;
+                    Id = p.Id,
+                    ClassId = p.ClassId,
+                    SectionId = p.SectionId,
+                    SectionName = p.SectionName,
+                    DayName = p.DayName,
+                    ScheduleDate = scheduleDate,
+                    PeriodNumber = p.PeriodNumber,
+                    EntryKind = string.IsNullOrWhiteSpace(p.EntryKind) ? "period" : p.EntryKind.Trim(),
+                    ItemName = p.ItemName,
+                    SubjectId = p.SubjectId,
+                    SubjectName = p.SubjectName,
+                    DurationMinutes = p.DurationMinutes,
+                    StartHour = p.StartHour,
+                    StartMinute = p.StartMinute,
+                    EndHour = p.EndHour,
+                    EndMinute = p.EndMinute,
+                    SyncedAt = syncedAt
+                });
                 result.SchedulePeriods++;
             }
 
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        else if (payload.ScheduleFullReplace)
+        {
             await _db.SaveChangesAsync(cancellationToken);
         }
 

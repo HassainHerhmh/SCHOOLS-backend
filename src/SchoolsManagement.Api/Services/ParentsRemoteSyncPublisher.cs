@@ -197,26 +197,24 @@ public class ParentsRemoteSyncPublisher
         if (plan.SyncSchedule)
         {
             onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع جدول الحصص");
-            var scheduleEntries = await LoadSchedulePeriodsAsync(plan, cancellationToken);
+            var scheduleEntries = await LoadSchedulePeriodsAsync(cancellationToken);
             var scheduleSettings = await LoadScheduleSettingsAsync(cancellationToken);
-            if (scheduleEntries.Count > 0 || scheduleSettings is not null)
+            var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
             {
-                var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
-                {
-                    SchoolId = schoolId,
-                    SchedulePeriods = scheduleEntries,
-                    ScheduleSettings = scheduleSettings
-                }, cancellationToken);
-                aggregate.SchedulePeriods += result.SchedulePeriods;
-                aggregate.ScheduleSettings += result.ScheduleSettings;
-                if (scheduleEntries.Count > 0 && result.SchedulePeriods <= 0)
-                {
-                    throw new InvalidOperationException("السيرفر الخارجي لم يحفظ جدول الحصص.");
-                }
-
-                uploadedItems += plan.ChangedSchedule;
-                onProgress?.Invoke(uploadedItems, totalItems, "تم رفع جدول الحصص");
+                SchoolId = schoolId,
+                SchedulePeriods = scheduleEntries,
+                ScheduleFullReplace = true,
+                ScheduleSettings = scheduleSettings
+            }, cancellationToken);
+            aggregate.SchedulePeriods += result.SchedulePeriods;
+            aggregate.ScheduleSettings += result.ScheduleSettings;
+            if (scheduleEntries.Count > 0 && result.SchedulePeriods <= 0)
+            {
+                throw new InvalidOperationException("السيرفر الخارجي لم يحفظ جدول الحصص.");
             }
+
+            uploadedItems += plan.ChangedSchedule;
+            onProgress?.Invoke(uploadedItems, totalItems, "تم رفع جدول الحصص");
         }
 
         return aggregate;
@@ -392,15 +390,9 @@ public class ParentsRemoteSyncPublisher
             .ToList();
     }
 
-    private async Task<List<ParentsSchedulePeriodIngestDto>> LoadSchedulePeriodsAsync(ParentsSyncPlan plan, CancellationToken ct)
+    private async Task<List<ParentsSchedulePeriodIngestDto>> LoadSchedulePeriodsAsync(CancellationToken ct)
     {
-        var periodQuery = _db.ClassSchedulePeriods.AsNoTracking();
-        if (plan.ScheduleSince is not null)
-        {
-            periodQuery = periodQuery.Where(p => p.UpdatedAt > plan.ScheduleSince.Value);
-        }
-
-        var periodRows = await periodQuery
+        var periodRows = await _db.ClassSchedulePeriods.AsNoTracking()
             .OrderBy(p => p.ClassId)
             .ThenBy(p => p.SectionId)
             .ThenBy(p => p.ScheduleDate)

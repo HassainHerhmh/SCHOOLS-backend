@@ -218,6 +218,26 @@ public class ClassSchedulesController : ControllerBase
 
             var day = ScheduleDateHelper.ArabicDayName(scheduleDate);
 
+            if (ScheduleDateHelper.TryParse(body.PreviousScheduleDate, body.PreviousScheduleDateAlt, out var previousDate)
+                && previousDate != scheduleDate)
+            {
+                var stalePeriods = await _db.ClassSchedulePeriods
+                    .Where(p => p.ClassId == classId && p.ScheduleDate == previousDate)
+                    .ToListAsync(ct);
+                if (stalePeriods.Count > 0)
+                {
+                    _db.ClassSchedulePeriods.RemoveRange(stalePeriods);
+                }
+
+                var staleCustom = await _db.ClassScheduleCustomItems
+                    .Where(p => p.ClassId == classId && p.ScheduleDate == previousDate)
+                    .ToListAsync(ct);
+                if (staleCustom.Count > 0)
+                {
+                    _db.ClassScheduleCustomItems.RemoveRange(staleCustom);
+                }
+            }
+
             var applyAll = body.ApplyToAllSections || body.ApplyToAllSectionsAlt;
             var sectionIds = new List<Guid>();
 
@@ -256,14 +276,32 @@ public class ClassSchedulesController : ControllerBase
             var existing = await _db.ClassSchedulePeriods
                 .Where(p => p.ClassId == classId && sectionIds.Contains(p.SectionId) && p.ScheduleDate == scheduleDate)
                 .ToListAsync(ct);
-            _db.ClassSchedulePeriods.RemoveRange(existing);
+            var existingByKey = existing.ToDictionary(p => (p.SectionId, p.PeriodNumber));
+            var touchedIds = new HashSet<Guid>();
 
             foreach (var sectionId in sectionIds)
             {
                 foreach (var slot in slots)
                 {
                     var (startH, startM, endH, endM, duration) = ResolveSlotTimes(slot);
-                    _db.ClassSchedulePeriods.Add(new ClassSchedulePeriodRecord
+                    var subjectId = slot.SubjectId is null || slot.SubjectId == Guid.Empty ? null : slot.SubjectId;
+                    var key = (sectionId, slot.PeriodNumber);
+
+                    if (existingByKey.TryGetValue(key, out var row))
+                    {
+                        row.DayName = day;
+                        row.SubjectId = subjectId;
+                        row.DurationMinutes = duration;
+                        row.StartHour = startH;
+                        row.StartMinute = startM;
+                        row.EndHour = endH;
+                        row.EndMinute = endM;
+                        row.UpdatedAt = now;
+                        touchedIds.Add(row.Id);
+                        continue;
+                    }
+
+                    var created = new ClassSchedulePeriodRecord
                     {
                         Id = Guid.NewGuid(),
                         ClassId = classId,
@@ -271,7 +309,7 @@ public class ClassSchedulesController : ControllerBase
                         DayName = day,
                         ScheduleDate = scheduleDate,
                         PeriodNumber = slot.PeriodNumber,
-                        SubjectId = slot.SubjectId is null || slot.SubjectId == Guid.Empty ? null : slot.SubjectId,
+                        SubjectId = subjectId,
                         DurationMinutes = duration,
                         StartHour = startH,
                         StartMinute = startM,
@@ -279,10 +317,19 @@ public class ClassSchedulesController : ControllerBase
                         EndMinute = endM,
                         CreatedAt = now,
                         UpdatedAt = now
-                    });
+                    };
+                    _db.ClassSchedulePeriods.Add(created);
+                    touchedIds.Add(created.Id);
                 }
             }
 
+            var orphans = existing.Where(p => !touchedIds.Contains(p.Id)).ToList();
+            if (orphans.Count > 0)
+            {
+                _db.ClassSchedulePeriods.RemoveRange(orphans);
+            }
+
+            await TouchScheduleSettingsAsync(now, ct);
             await _db.SaveChangesAsync(ct);
             return Ok(new { message = "تم حفظ جدول الحصص.", sections = sectionIds.Count });
         }
@@ -350,6 +397,7 @@ public class ClassSchedulesController : ControllerBase
                 _db.ClassScheduleCustomItems.RemoveRange(customRows);
             }
 
+            await TouchScheduleSettingsAsync(DateTimeOffset.UtcNow, ct);
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
@@ -494,6 +542,7 @@ public class ClassSchedulesController : ControllerBase
             }
 
             _db.ClassScheduleCustomItems.AddRange(created);
+            await TouchScheduleSettingsAsync(now, ct);
             await _db.SaveChangesAsync(ct);
 
             var first = created[0];
@@ -558,6 +607,7 @@ public class ClassSchedulesController : ControllerBase
                 row.SectionId = sectionId;
             }
 
+            await TouchScheduleSettingsAsync(row.UpdatedAt, ct);
             await _db.SaveChangesAsync(ct);
 
             return Ok(new
@@ -594,6 +644,7 @@ public class ClassSchedulesController : ControllerBase
             }
 
             _db.ClassScheduleCustomItems.Remove(row);
+            await TouchScheduleSettingsAsync(DateTimeOffset.UtcNow, ct);
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
@@ -602,6 +653,24 @@ public class ClassSchedulesController : ControllerBase
             _errorLog.Log(ex, HttpContext);
             return StatusCode(500, new { message = "تعذر حذف البند." });
         }
+    }
+
+    private async Task TouchScheduleSettingsAsync(DateTimeOffset updatedAt, CancellationToken ct)
+    {
+        var row = await _db.ClassScheduleSettings.FirstOrDefaultAsync(s => s.Id == 1, ct);
+        if (row is null)
+        {
+            _db.ClassScheduleSettings.Add(new ClassScheduleSettingsRecord
+            {
+                Id = 1,
+                DayName = "الأحد",
+                PeriodsCount = 6,
+                UpdatedAt = updatedAt
+            });
+            return;
+        }
+
+        row.UpdatedAt = updatedAt;
     }
 
     private static List<ScheduleSlotRequest> NormalizeSlots(List<ScheduleSlotRequest>? slots)
@@ -785,6 +854,11 @@ public class ClassSchedulesController : ControllerBase
         public string? ScheduleDate { get; set; }
 
         public string? ScheduleDateAlt { get; set; }
+
+        [JsonPropertyName("previous_schedule_date")]
+        public string? PreviousScheduleDate { get; set; }
+
+        public string? PreviousScheduleDateAlt { get; set; }
 
         [JsonPropertyName("slots")]
         public List<ScheduleSlotRequest>? Slots { get; set; }

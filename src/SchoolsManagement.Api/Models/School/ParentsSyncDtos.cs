@@ -10,6 +10,7 @@ public class ParentsSyncIngestPayload
     public List<ParentsStudentReportIngestDto>? StudentReports { get; set; }
     public List<ParentsInstallmentIngestDto>? Installments { get; set; }
     public List<ParentsSchedulePeriodIngestDto>? SchedulePeriods { get; set; }
+    public bool ScheduleFullReplace { get; set; }
     public ParentsScheduleSettingsIngestDto? ScheduleSettings { get; set; }
 }
 
