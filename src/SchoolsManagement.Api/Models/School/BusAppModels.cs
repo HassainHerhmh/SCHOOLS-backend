@@ -53,7 +53,7 @@ public class BusAppDriverRecord
 
     [Column("password")]
     [MaxLength(500)]
-    public string Password { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
 
     [Column("synced_at")]
     public DateTimeOffset SyncedAt { get; set; }

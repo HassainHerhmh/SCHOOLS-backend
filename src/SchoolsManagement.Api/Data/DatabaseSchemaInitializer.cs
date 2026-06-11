@@ -22,6 +22,8 @@ public static class DatabaseSchemaInitializer
 
         ILogger logger,
 
+        IConfiguration configuration,
+
         CancellationToken cancellationToken = default)
 
     {
@@ -40,7 +42,7 @@ public static class DatabaseSchemaInitializer
 
         {
 
-            await ApplyMySqlRoyalAsync(db, logger, cancellationToken);
+            await ApplyMySqlRoyalAsync(db, logger, configuration, cancellationToken);
 
             return;
 
@@ -48,7 +50,7 @@ public static class DatabaseSchemaInitializer
 
 
 
-        await ApplySqlServerAsync(db, logger, cancellationToken);
+        await ApplySqlServerAsync(db, logger, configuration, cancellationToken);
 
     }
 
@@ -61,6 +63,8 @@ public static class DatabaseSchemaInitializer
         ApplicationDbContext db,
 
         ILogger logger,
+
+        IConfiguration configuration,
 
         CancellationToken cancellationToken)
 
@@ -85,6 +89,13 @@ public static class DatabaseSchemaInitializer
 
         }
 
+        try
+        {
+            var pepper = configuration["EmployeeAuth:Pepper"] ?? "your-secret-key-here";
+            await BusPasswordMigrationBootstrap.MigratePlainPasswordsAsync(db, pepper, cancellationToken);
+        }
+        catch (Exception ex) { logger.LogError(ex, "فشل ترحيل كلمات مرور الباص (MySQL)."); }
+
     }
 
 
@@ -94,6 +105,8 @@ public static class DatabaseSchemaInitializer
         ApplicationDbContext db,
 
         ILogger logger,
+
+        IConfiguration configuration,
 
         CancellationToken cancellationToken)
 
@@ -173,6 +186,13 @@ public static class DatabaseSchemaInitializer
         try { BusAppTablesBootstrap.EnsureExists(db); }
 
         catch (Exception ex) { logger.LogError(ex, "فشل جداول bus_*."); }
+
+        try
+        {
+            var pepper = configuration["EmployeeAuth:Pepper"] ?? "your-secret-key-here";
+            await BusPasswordMigrationBootstrap.MigratePlainPasswordsAsync(db, pepper, cancellationToken);
+        }
+        catch (Exception ex) { logger.LogError(ex, "فشل ترحيل كلمات مرور الباص."); }
 
     }
 

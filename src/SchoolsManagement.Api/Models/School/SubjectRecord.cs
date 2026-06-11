@@ -61,6 +61,10 @@ public class ExamRecord
     [Column("academic_year")]
     public int? AcademicYear { get; set; }
 
+    [Column("schedule_kind")]
+    [MaxLength(20)]
+    public string ScheduleKind { get; set; } = "quiz";
+
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }
 

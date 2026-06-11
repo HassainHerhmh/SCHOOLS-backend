@@ -130,6 +130,8 @@ public class ExamsController : ControllerBase
 
             AcademicYear = academicYear,
 
+            ScheduleKind = NormalizeScheduleKind(body.ScheduleKind),
+
             CreatedAt = now,
 
             UpdatedAt = now
@@ -251,6 +253,16 @@ public class ExamsController : ControllerBase
 
 
 
+        if (!string.IsNullOrWhiteSpace(body.ScheduleKind))
+
+        {
+
+            entity.ScheduleKind = NormalizeScheduleKind(body.ScheduleKind);
+
+        }
+
+
+
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -311,6 +323,8 @@ public class ExamsController : ControllerBase
 
         activity_type = string.IsNullOrWhiteSpace(e.ActivityType) ? "exam" : e.ActivityType,
 
+        schedule_kind = NormalizeScheduleKind(e.ScheduleKind),
+
         academic_year = e.AcademicYear ?? DateTime.UtcNow.Year,
 
         created_at = e.CreatedAt,
@@ -330,6 +344,12 @@ public class ExamsController : ControllerBase
     private static string NormalizeActivityType(string? activityType) =>
 
         string.IsNullOrWhiteSpace(activityType) ? "exam" : activityType.Trim();
+
+
+
+    private static string NormalizeScheduleKind(string? scheduleKind) =>
+
+        string.Equals(scheduleKind, "final", StringComparison.OrdinalIgnoreCase) ? "final" : "quiz";
 
 
 
@@ -430,6 +450,8 @@ public class UpsertExamRequest
     public string? Semester { get; set; }
 
     public string? ActivityType { get; set; }
+
+    public string? ScheduleKind { get; set; }
 
     public int AcademicYear { get; set; }
 

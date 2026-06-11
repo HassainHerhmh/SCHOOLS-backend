@@ -62,7 +62,7 @@ public class BusRemoteSyncPublisher
                 FullName = x.FullName,
                 PhoneNumber = x.PhoneNumber,
                 Username = x.Username,
-                Password = x.Password
+                Password = x.PasswordHash
             })
             .ToListAsync(cancellationToken);
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.School;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
@@ -13,11 +14,15 @@ public class BusUsersController : ControllerBase
 {
     private const string PasswordChars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
     private readonly ApplicationDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public BusUsersController(ApplicationDbContext db)
+    public BusUsersController(ApplicationDbContext db, IConfiguration configuration)
     {
         _db = db;
+        _configuration = configuration;
     }
+
+    private string Pepper => _configuration["EmployeeAuth:Pepper"] ?? "your-secret-key-here";
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll(CancellationToken ct)
@@ -109,7 +114,7 @@ public class BusUsersController : ControllerBase
             FullName = fullName,
             PhoneNumber = phone,
             Username = username,
-            Password = password,
+            PasswordHash = EmployeePasswordHasher.Hash(password, Pepper),
             CreatedAt = now
         };
         _db.BusPortalUsers.Add(entity);
@@ -121,7 +126,7 @@ public class BusUsersController : ControllerBase
             full_name = entity.FullName,
             phone_number = entity.PhoneNumber,
             username = entity.Username,
-            password = entity.Password
+            password
         });
     }
 
@@ -149,7 +154,7 @@ public class BusUsersController : ControllerBase
         entity.Username = username;
         if (!string.IsNullOrEmpty(body.Password))
         {
-            entity.Password = body.Password;
+            entity.PasswordHash = EmployeePasswordHasher.Hash(body.Password, Pepper);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -193,7 +198,7 @@ public class BusUsersController : ControllerBase
         if (entity is null) return NotFound(new { message = "المستخدم غير موجود." });
 
         var newPass = GeneratePortalPassword();
-        entity.Password = newPass;
+        entity.PasswordHash = EmployeePasswordHasher.Hash(newPass, Pepper);
         await _db.SaveChangesAsync(ct);
 
         return Ok(new { password = newPass });

@@ -28,7 +28,7 @@ public class BusPortalUserRecord
     [Required]
     [Column("password")]
     [MaxLength(500)]
-    public string Password { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
 
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }

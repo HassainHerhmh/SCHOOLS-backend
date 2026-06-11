@@ -32,7 +32,7 @@ public class BusAppIngestService
                 row.FullName = driver.FullName;
                 row.PhoneNumber = driver.PhoneNumber;
                 row.Username = driver.Username;
-                row.Password = driver.Password;
+                row.PasswordHash = driver.Password;
                 row.SyncedAt = syncedAt;
                 result.Drivers++;
             }

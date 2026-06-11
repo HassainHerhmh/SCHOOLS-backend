@@ -77,6 +77,8 @@ public class StudentsController : ControllerBase
             Status = "active",
             BusSiteId = body.BusSiteId,
             BusSiteName = body.BusSiteName,
+            BusDriverId = body.BusDriverId,
+            BusDriverName = body.BusDriverName,
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -121,6 +123,8 @@ public class StudentsController : ControllerBase
         entity.Gender = string.IsNullOrWhiteSpace(body.Gender) ? null : body.Gender;
         entity.BusSiteId = body.BusSiteId;
         entity.BusSiteName = body.BusSiteName;
+        entity.BusDriverId = body.BusDriverId;
+        entity.BusDriverName = body.BusDriverName;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);

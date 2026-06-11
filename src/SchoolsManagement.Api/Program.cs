@@ -258,6 +258,7 @@ using (var scope = app.Services.CreateScope())
             db,
             dbConfig,
             scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseSchema"),
+            scope.ServiceProvider.GetRequiredService<IConfiguration>(),
             CancellationToken.None)
         .GetAwaiter()
         .GetResult();
