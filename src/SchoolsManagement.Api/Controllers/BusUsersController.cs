@@ -22,7 +22,7 @@ public class BusUsersController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<object>>> GetAll(CancellationToken ct)
     {
-        var rows = await _db.BusPortalUsers
+        var users = await _db.BusPortalUsers
             .AsNoTracking()
             .OrderByDescending(x => x.CreatedAt ?? DateTimeOffset.MinValue)
             .Select(x => new
@@ -33,7 +33,55 @@ public class BusUsersController : ControllerBase
                 x.Username
             })
             .ToListAsync(ct);
+
+        var counts = await _db.StudentRecords
+            .AsNoTracking()
+            .Where(s => s.BusDriverId != null)
+            .GroupBy(s => s.BusDriverId)
+            .Select(g => new { DriverId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var countMap = counts.ToDictionary(x => x.DriverId!.Value, x => x.Count);
+
+        var rows = users.Select(u => new
+        {
+            u.Id,
+            u.FullName,
+            u.PhoneNumber,
+            u.Username,
+            student_count = countMap.TryGetValue(u.Id, out var count) ? count : 0
+        });
+
         return Ok(rows);
+    }
+
+    [HttpGet("{id:guid}/students")]
+    public async Task<ActionResult<IEnumerable<object>>> GetStudents(Guid id, CancellationToken ct)
+    {
+        var exists = await _db.BusPortalUsers.AsNoTracking().AnyAsync(u => u.Id == id, ct);
+        if (!exists)
+        {
+            return NotFound(new { message = "المستخدم غير موجود." });
+        }
+
+        var students = await _db.StudentRecords
+            .AsNoTracking()
+            .Where(s => s.BusDriverId == id)
+            .OrderBy(s => s.Level)
+            .ThenBy(s => s.Section)
+            .ThenBy(s => s.Name)
+            .Select(s => new
+            {
+                s.Id,
+                s.Name,
+                parent_phone = s.ParentPhone,
+                s.Level,
+                s.Section,
+                bus_site_name = s.BusSiteName
+            })
+            .ToListAsync(ct);
+
+        return Ok(students);
     }
 
     [HttpPost]
@@ -113,6 +161,12 @@ public class BusUsersController : ControllerBase
     {
         var entity = await _db.BusPortalUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
         if (entity is null) return NotFound(new { message = "المستخدم غير موجود." });
+
+        var hasStudents = await _db.StudentRecords.AnyAsync(s => s.BusDriverId == id, ct);
+        if (hasStudents)
+        {
+            return Conflict(new { message = "لا يمكن حذف المستخدم — يوجد طلاب مرتبطون به كسائق باص." });
+        }
 
         _db.BusPortalUsers.Remove(entity);
         await _db.SaveChangesAsync(ct);

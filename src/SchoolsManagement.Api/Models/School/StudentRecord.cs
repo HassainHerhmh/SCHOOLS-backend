@@ -75,6 +75,13 @@ public class StudentRecord
     [MaxLength(500)]
     public string? BusSiteName { get; set; }
 
+    [Column("bus_driver_id")]
+    public Guid? BusDriverId { get; set; }
+
+    [Column("bus_driver_name")]
+    [MaxLength(500)]
+    public string? BusDriverName { get; set; }
+
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }
 

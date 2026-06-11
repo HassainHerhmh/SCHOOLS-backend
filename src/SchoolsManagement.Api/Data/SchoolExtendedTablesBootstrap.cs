@@ -128,6 +128,11 @@ BEGIN
     ALTER TABLE dbo.exams ADD academic_year int NULL;
 END
 
+IF COL_LENGTH(N'dbo.exams', N'schedule_kind') IS NULL
+BEGIN
+    ALTER TABLE dbo.exams ADD schedule_kind nvarchar(20) NOT NULL CONSTRAINT DF_exams_schedule_kind DEFAULT (N'quiz');
+END
+
 IF OBJECT_ID(N'dbo.grade_rules', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.grade_rules (
@@ -256,6 +261,68 @@ BEGIN
     SET tuition_month_labels = N'["سبتمبر","أكتوبر","نوفمبر","ديسمبر","يناير","فبراير"]'
     WHERE id = 1 AND (tuition_month_labels IS NULL OR LTRIM(RTRIM(tuition_month_labels)) = N'');
 END
+
+IF OBJECT_ID(N'dbo.exam_schedules', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.exam_schedules (
+        id uniqueidentifier NOT NULL CONSTRAINT PK_exam_schedules PRIMARY KEY,
+        class_id uniqueidentifier NOT NULL,
+        day_name nvarchar(50) NOT NULL,
+        subject_id uniqueidentifier NULL,
+        created_at datetimeoffset(7) NOT NULL CONSTRAINT DF_exam_schedules_created DEFAULT (sysdatetimeoffset()),
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_exam_schedules_updated DEFAULT (sysdatetimeoffset()),
+        CONSTRAINT UQ_exam_schedules_class_day UNIQUE (class_id, day_name)
+    );
+    CREATE INDEX IX_exam_schedules_class ON dbo.exam_schedules(class_id);
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'exam_date') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD exam_date date NULL;
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'duration_minutes') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD duration_minutes int NULL;
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'exam_month') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD exam_month nvarchar(30) NOT NULL CONSTRAINT DF_exam_schedules_month DEFAULT (N'');
+END
+
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID(N'dbo.exam_schedules')
+      AND name = N'UQ_exam_schedules_class_day')
+BEGIN
+    ALTER TABLE dbo.exam_schedules DROP CONSTRAINT UQ_exam_schedules_class_day;
+END
+
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID(N'dbo.exam_schedules')
+      AND name = N'UQ_exam_schedules_class_month_day')
+BEGIN
+    ALTER TABLE dbo.exam_schedules DROP CONSTRAINT UQ_exam_schedules_class_month_day;
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'sort_order') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD sort_order int NOT NULL CONSTRAINT DF_exam_schedules_sort DEFAULT (0);
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'schedule_kind') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD schedule_kind nvarchar(20) NOT NULL CONSTRAINT DF_exam_schedules_schedule_kind DEFAULT (N'quiz');
+END
+
+IF COL_LENGTH(N'dbo.exam_schedules', N'semester') IS NULL
+BEGIN
+    ALTER TABLE dbo.exam_schedules ADD semester nvarchar(20) NULL;
+END
+
+UPDATE dbo.exam_schedules SET semester = N'first' WHERE semester IS NULL OR LTRIM(RTRIM(semester)) = N'';
 """;
 
     public static void EnsureExists(ApplicationDbContext db) =>
