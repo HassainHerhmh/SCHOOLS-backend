@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SchoolsManagement.Api.Configuration;
 
 namespace SchoolsManagement.Api.Data;
 
@@ -65,17 +66,27 @@ END
 
     public static void EnsureExists(ApplicationDbContext db)
     {
+        if (DatabaseProviderHelper.IsMySql(db))
+        {
+            EnsureMySqlBusTables(db);
+            return;
+        }
+
         db.Database.ExecuteSqlRaw(SqlServerSql);
     }
 
     public static async Task EnsureExistsAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
     {
+        if (DatabaseProviderHelper.IsMySql(db))
+        {
+            await EnsureMySqlBusTablesAsync(db, cancellationToken);
+            return;
+        }
+
         await db.Database.ExecuteSqlRawAsync(SqlServerSql, cancellationToken);
     }
 
-    public static async Task EnsureMySqlBusTablesAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
-    {
-        var sql = """
+    private const string MySqlSql = """
 CREATE TABLE IF NOT EXISTS bus_driver_locations (
     Id char(36) NOT NULL PRIMARY KEY,
     driver_id char(36) NOT NULL,
@@ -121,6 +132,30 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
     recorded_at datetime(6) NOT NULL
 );
 """;
-        await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+
+    private static void EnsureMySqlBusTables(ApplicationDbContext db)
+    {
+        foreach (var statement in MySqlSql.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (statement.Length == 0)
+            {
+                continue;
+            }
+
+            db.Database.ExecuteSqlRaw(statement);
+        }
+    }
+
+    public static async Task EnsureMySqlBusTablesAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
+    {
+        foreach (var statement in MySqlSql.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (statement.Length == 0)
+            {
+                continue;
+            }
+
+            await db.Database.ExecuteSqlRawAsync(statement, cancellationToken);
+        }
     }
 }
