@@ -20,6 +20,20 @@
 | `Jwt__Audience` | SchoolsManagement.Client |
 | `ParentsRoyal__SyncApiKey` | Same as school `appsettings.Secrets.json` |
 | `ParentsRoyal__SchoolId` | e.g. al-rowad-schools |
+| `BusRoyal__SyncApiKey` | Same as school `appsettings.Secrets.json` |
+| `BusRoyal__SchoolId` | e.g. al-rowad-schools |
 
 Do **not** use `MYSQL_PUBLIC_URL` for this API.
+
+## Bus App API
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/bus-auth/login` | Bus driver login |
+| `GET /api/bus-app/students` | Students for logged-in driver (JWT) |
+| `GET /api/bus-app/location` | Latest bus location |
+| `GET /api/bus-app/route` | Route waypoints |
+| `POST /api/bus-driver/location` | Update GPS from driver app |
+| `POST /api/sync/ingest-bus` | Receive bus sync payload (`X-Bus-Sync-Key`) |
+| `GET /api/sync/bus-data-status` | Published bus row counts |
 

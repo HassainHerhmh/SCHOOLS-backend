@@ -38,6 +38,7 @@ public static class ApiPermissionMap
         ("/api/grade-rules", PermissionCatalog.StudentGrades),
         ("/api/subjects", PermissionCatalog.Classes),
         ("/api/exams", PermissionCatalog.Classes),
+        ("/api/exam-schedules", PermissionCatalog.Classes),
         ("/api/transfer-approvals", PermissionCatalog.TransferApprovals),
         ("/api/database-backup", PermissionCatalog.SystemBackup),
     ];
@@ -53,8 +54,11 @@ public static class ApiPermissionMap
                || path.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/api/auth/register", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/api/employees/login", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/api/bus-auth/login", StringComparison.OrdinalIgnoreCase)
                || path.StartsWith("/api/sync/ingest-parents", StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith("/api/parents/", StringComparison.OrdinalIgnoreCase);
+               || path.StartsWith("/api/sync/ingest-bus", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/api/parents/", StringComparison.OrdinalIgnoreCase)
+               || path.StartsWith("/api/bus-app/", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>مسارات تتطلب JWT دائماً حتى بدون خريطة صلاحية.</summary>

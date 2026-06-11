@@ -71,8 +71,9 @@ public static class DatabaseSchemaInitializer
         {
 
             await ParentsAppTablesBootstrap.EnsureMySqlParentsTablesAsync(db, cancellationToken);
+            await BusAppTablesBootstrap.EnsureMySqlBusTablesAsync(db, cancellationToken);
 
-            logger.LogInformation("MySQL (رويال): تم التأكد من جداول parents_* الأربعة فقط.");
+            logger.LogInformation("MySQL (رويال): تم التأكد من جداول parents_* و bus_*.");
 
         }
 
@@ -150,6 +151,10 @@ public static class DatabaseSchemaInitializer
 
         catch (Exception ex) { logger.LogError(ex, "فشل الجداول الموسعة."); }
 
+        try { StudentBusDriverBootstrap.EnsureColumns(db); }
+
+        catch (Exception ex) { logger.LogError(ex, "فشل أعمدة سائق الباص للطلاب."); }
+
 
 
         try
@@ -164,6 +169,10 @@ public static class DatabaseSchemaInitializer
         try { ParentsAppTablesBootstrap.EnsureExists(db); }
 
         catch (Exception ex) { logger.LogError(ex, "فشل جداول parents_*."); }
+
+        try { BusAppTablesBootstrap.EnsureExists(db); }
+
+        catch (Exception ex) { logger.LogError(ex, "فشل جداول bus_*."); }
 
     }
 

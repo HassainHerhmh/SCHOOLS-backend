@@ -28,17 +28,23 @@ public class SyncController : ControllerBase
     private readonly IConfiguration _config;
     private readonly ParentsRemoteSyncPublisher _remotePublisher;
     private readonly ParentsAppIngestService _ingestService;
+    private readonly BusRemoteSyncPublisher _busPublisher;
+    private readonly BusAppIngestService _busIngestService;
 
     public SyncController(
         ApplicationDbContext db,
         IConfiguration config,
         ParentsRemoteSyncPublisher remotePublisher,
-        ParentsAppIngestService ingestService)
+        ParentsAppIngestService ingestService,
+        BusRemoteSyncPublisher busPublisher,
+        BusAppIngestService busIngestService)
     {
         _db = db;
         _config = config;
         _remotePublisher = remotePublisher;
         _ingestService = ingestService;
+        _busPublisher = busPublisher;
+        _busIngestService = busIngestService;
     }
 
     /// <summary>عدد الطلاب النشطين المعروض في واجهة المزامنة (شريط التقدّم).</summary>
@@ -126,6 +132,82 @@ public class SyncController : ControllerBase
         {
             return StatusCode(500, new { message = "فشل استلام البيانات", error = ex.Message });
         }
+    }
+
+    [HttpGet("bus-sync-preview")]
+    public async Task<IActionResult> BusSyncPreview(CancellationToken cancellationToken)
+    {
+        var drivers = await _db.BusPortalUsers.CountAsync(cancellationToken);
+        var students = await _db.StudentRecords.CountAsync(s => s.BusDriverId != null, cancellationToken);
+        return Ok(new
+        {
+            driver_count = drivers,
+            student_count = students,
+            total_items = drivers + students,
+            item_label = "سجل"
+        });
+    }
+
+    [HttpPost("ingest-bus")]
+    public async Task<IActionResult> IngestBus([FromBody] BusSyncIngestPayload payload, CancellationToken cancellationToken)
+    {
+        if (!ValidateBusSyncKey())
+        {
+            return Unauthorized(new { message = "مفتاح مزامنة الباصات غير صالح." });
+        }
+
+        try
+        {
+            var result = await _busIngestService.IngestAsync(payload, cancellationToken);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "فشل استلام بيانات الباصات", error = ex.Message });
+        }
+    }
+
+    [HttpPost("publish-to-bus")]
+    public async Task<IActionResult> PublishToBus(CancellationToken cancellationToken)
+    {
+        if (!_busPublisher.IsConfigured())
+        {
+            const string configMsg =
+                "لم يُضبط سيرفر الباصات. أضف BusRoyal:RemoteApiUrl و BusRoyal:SyncApiKey في appsettings.Secrets.json.";
+            return BadRequest(new { message = configMsg });
+        }
+
+        try
+        {
+            var result = await _busPublisher.PublishAsync(cancellationToken);
+            return Ok(new
+            {
+                success = true,
+                message = "تم رفع بيانات الباصات بنجاح",
+                uploaded = result
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "فشل رفع بيانات الباصات", error = ex.Message });
+        }
+    }
+
+    [HttpGet("bus-data-status")]
+    public async Task<IActionResult> BusDataStatus(CancellationToken cancellationToken)
+    {
+        if (!ValidateBusSyncKey())
+        {
+            return Unauthorized(new { message = "مفتاح مزامنة الباصات غير صالح." });
+        }
+
+        await BusAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
+        return Ok(new
+        {
+            drivers = await _db.BusAppDrivers.CountAsync(cancellationToken),
+            students = await _db.BusAppStudents.CountAsync(cancellationToken),
+            locations = await _db.BusAppLocations.CountAsync(cancellationToken)
+        });
     }
 
     [HttpPost("publish-to-parents")]
@@ -261,6 +343,18 @@ public class SyncController : ControllerBase
         }
 
         var provided = Request.Headers["X-Parents-Sync-Key"].FirstOrDefault()?.Trim();
+        return string.Equals(expected, provided, StringComparison.Ordinal);
+    }
+
+    private bool ValidateBusSyncKey()
+    {
+        var expected = _config["BusRoyal:SyncApiKey"]?.Trim();
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return false;
+        }
+
+        var provided = Request.Headers["X-Bus-Sync-Key"].FirstOrDefault()?.Trim();
         return string.Equals(expected, provided, StringComparison.Ordinal);
     }
 

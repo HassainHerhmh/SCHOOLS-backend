@@ -45,6 +45,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StudentDiscountApplicationRecord> StudentDiscountApplications => Set<StudentDiscountApplicationRecord>();
     public DbSet<SubjectRecord> Subjects => Set<SubjectRecord>();
     public DbSet<ExamRecord> Exams => Set<ExamRecord>();
+    public DbSet<ExamScheduleRecord> ExamSchedules => Set<ExamScheduleRecord>();
     public DbSet<GradeRuleRecord> GradeRules => Set<GradeRuleRecord>();
     public DbSet<GradeRecord> Grades => Set<GradeRecord>();
     public DbSet<ClassScheduleSettingsRecord> ClassScheduleSettings => Set<ClassScheduleSettingsRecord>();
@@ -59,6 +60,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ParentsStudentInstallmentRecord> ParentsStudentInstallments => Set<ParentsStudentInstallmentRecord>();
     public DbSet<ParentsSchedulePeriodRecord> ParentsSchedulePeriods => Set<ParentsSchedulePeriodRecord>();
     public DbSet<ParentsScheduleSettingsRecord> ParentsScheduleSettings => Set<ParentsScheduleSettingsRecord>();
+    public DbSet<BusDriverLocationRecord> BusDriverLocations => Set<BusDriverLocationRecord>();
+    public DbSet<BusAppDriverRecord> BusAppDrivers => Set<BusAppDriverRecord>();
+    public DbSet<BusAppStudentRecord> BusAppStudents => Set<BusAppStudentRecord>();
+    public DbSet<BusAppLocationRecord> BusAppLocations => Set<BusAppLocationRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
