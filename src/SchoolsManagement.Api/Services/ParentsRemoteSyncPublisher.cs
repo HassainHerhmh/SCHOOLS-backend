@@ -323,10 +323,14 @@ public class ParentsRemoteSyncPublisher
     private async Task<List<ParentsStudentIngestDto>> LoadStudentsAsync(ParentsSyncPlan plan, CancellationToken ct)
     {
         var query = _db.StudentRecords.Where(s => s.Status == "active");
-        if (plan.StudentsSince is not null)
+        if (plan.StudentsSince is not null || (plan.GradesSince is not null && plan.GradeChangedStudentIds.Count > 0))
         {
+            var gradeChangedIds = plan.GradeChangedStudentIds;
+            var studentsSince = plan.StudentsSince;
             query = query.Where(s =>
-                (s.UpdatedAt ?? s.CreatedAt ?? DateTimeOffset.MinValue) > plan.StudentsSince.Value);
+                (studentsSince == null ||
+                 (s.UpdatedAt ?? s.CreatedAt ?? DateTimeOffset.MinValue) > studentsSince.Value) ||
+                gradeChangedIds.Contains(s.Id));
         }
 
         return await query
@@ -650,6 +654,7 @@ public class ParentsRemoteSyncPublisher
         public int ChangedAttendance { get; set; }
         public int ChangedInstallments { get; set; }
         public int ChangedSchedule { get; set; }
+        public int ChangedGrades { get; set; }
         public bool SyncStudents { get; set; }
         public bool SyncClasses { get; set; }
         public bool SyncSections { get; set; }
@@ -657,6 +662,7 @@ public class ParentsRemoteSyncPublisher
         public bool SyncStudentReports { get; set; }
         public bool SyncInstallments { get; set; }
         public bool SyncSchedule { get; set; }
+        public bool SyncGrades { get; set; }
         public int ChangedStudentReports { get; set; }
         public int TotalItems { get; set; }
         public string ItemLabel { get; set; } = "عنصر";
@@ -665,6 +671,8 @@ public class ParentsRemoteSyncPublisher
         public DateTimeOffset? ClassesSince { get; set; }
         public DateTimeOffset? SectionsSince { get; set; }
         public DateTimeOffset? ScheduleSince { get; set; }
+        public DateTimeOffset? GradesSince { get; set; }
+        public List<Guid> GradeChangedStudentIds { get; set; } = [];
         public DateTimeOffset CheckpointAt { get; set; }
         public bool HasChanges => TotalItems > 0;
     }

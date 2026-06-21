@@ -105,6 +105,18 @@ public static class ParentsSyncVerification
             }
         }
 
+        if (plan.SyncGrades && plan.ChangedGrades > 0)
+        {
+            if (uploaded.Grades <= 0)
+            {
+                issues.Add($"لم تُرفع درجات {plan.ChangedGrades} طالب متغيّر.");
+            }
+            else if (remote?.Grades <= 0)
+            {
+                issues.Add("جدول الدرجات على السيرفر الخارجي فارغ بعد رفع التحديثات.");
+            }
+        }
+
         if (uploaded.Grades > 0)
         {
             if (remote is null)

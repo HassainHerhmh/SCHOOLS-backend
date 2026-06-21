@@ -21,6 +21,7 @@ public class SyncController : ControllerBase
     private const string AttendanceCheckpointKey = "parents.attendance";
     private const string ScheduleCheckpointKey = "parents.schedule";
     private const string InstallmentsCheckpointKey = "parents.installments";
+    private const string GradesCheckpointKey = "parents.grades";
 
     private static readonly ConcurrentDictionary<string, ParentsSyncProgressState> ParentsSyncProgressBySession = new();
 
@@ -64,7 +65,8 @@ public class SyncController : ControllerBase
             changed_sections = plan.ChangedSections,
             changed_attendance = plan.ChangedAttendance,
             changed_installments = plan.ChangedInstallments,
-            changed_schedule = plan.ChangedSchedule
+            changed_schedule = plan.ChangedSchedule,
+            changed_grades = plan.ChangedGrades
         });
     }
 
@@ -441,6 +443,7 @@ public class SyncController : ControllerBase
         checkpoints.TryGetValue(AttendanceCheckpointKey, out var attendanceSince);
         checkpoints.TryGetValue(ScheduleCheckpointKey, out var scheduleSince);
         checkpoints.TryGetValue(InstallmentsCheckpointKey, out var installmentsSince);
+        checkpoints.TryGetValue(GradesCheckpointKey, out var gradesSince);
 
         var hasStudentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(StudentsCheckpointKey);
         var hasClassesCheckpoint = !forceFullSync && checkpoints.ContainsKey(ClassesCheckpointKey);
@@ -448,6 +451,7 @@ public class SyncController : ControllerBase
         var hasAttendanceCheckpoint = !forceFullSync && checkpoints.ContainsKey(AttendanceCheckpointKey);
         var hasScheduleCheckpoint = !forceFullSync && checkpoints.ContainsKey(ScheduleCheckpointKey);
         var hasInstallmentsCheckpoint = !forceFullSync && checkpoints.ContainsKey(InstallmentsCheckpointKey);
+        var hasGradesCheckpoint = !forceFullSync && checkpoints.ContainsKey(GradesCheckpointKey);
 
         var changedStudents = hasStudentsCheckpoint
             ? await _db.StudentRecords.CountAsync(s =>
@@ -496,36 +500,56 @@ public class SyncController : ControllerBase
             }
         }
 
-        var syncStudents = changedStudents > 0;
+        var gradeChangedStudentIds = hasGradesCheckpoint
+            ? await _db.Grades.AsNoTracking()
+                .Where(g =>
+                    activeStudentIds.Contains(g.StudentId) &&
+                    (g.UpdatedAt ?? g.CreatedAt) > gradesSince)
+                .Select(g => g.StudentId)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+            : await _db.Grades.AsNoTracking()
+                .Where(g => activeStudentIds.Contains(g.StudentId))
+                .Select(g => g.StudentId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+        var changedGrades = gradeChangedStudentIds.Count;
+
+        var syncStudents = changedStudents > 0 || changedGrades > 0;
         var syncClasses = changedClasses > 0;
         var syncSections = changedSections > 0;
         var syncAttendance = changedAttendance > 0;
         var syncSchedule = changedSchedule > 0;
-        var totalItems = changedStudents + changedClasses + changedSections + changedAttendance + changedSchedule;
-        var itemLabel = syncStudents && !syncClasses && !syncSections && !syncAttendance && !syncSchedule
-            ? "طالب"
-            : syncAttendance && !syncStudents && !syncClasses && !syncSections && !syncSchedule
-                ? "سجل حضور"
-                : syncSchedule && !syncStudents && !syncClasses && !syncSections && !syncAttendance
-                    ? "حصة"
-                    : "عنصر";
+        var syncGrades = changedGrades > 0;
+        var studentsToSync = Math.Max(changedStudents, changedGrades);
+        var totalItems = studentsToSync + changedClasses + changedSections + changedAttendance + changedSchedule;
+        var itemLabel = syncAttendance && changedStudents == 0 && changedGrades == 0 && !syncClasses && !syncSections && !syncSchedule
+            ? "سجل حضور"
+            : syncSchedule && changedStudents == 0 && changedGrades == 0 && !syncClasses && !syncSections && !syncAttendance
+                ? "حصة"
+                : syncGrades && changedStudents == 0
+                    ? "طالب (درجات)"
+                    : "طالب";
 
         return new ParentsSyncPlan
         {
-            ChangedStudents = changedStudents,
+            ChangedStudents = studentsToSync,
             ChangedClasses = changedClasses,
             ChangedSections = changedSections,
             ChangedAttendance = changedAttendance,
-            ChangedInstallments = changedStudents,
+            ChangedInstallments = studentsToSync,
             ChangedSchedule = changedSchedule,
+            ChangedGrades = changedGrades,
             SyncStudents = syncStudents,
             SyncClasses = syncClasses,
             SyncSections = syncSections,
             SyncAttendance = syncAttendance,
             SyncStudentReports = syncStudents,
             SyncInstallments = syncStudents,
-            ChangedStudentReports = changedStudents,
+            ChangedStudentReports = studentsToSync,
             SyncSchedule = syncSchedule,
+            SyncGrades = syncGrades,
             TotalItems = totalItems,
             ItemLabel = itemLabel,
             AttendanceSince = hasAttendanceCheckpoint ? attendanceSince : null,
@@ -533,6 +557,8 @@ public class SyncController : ControllerBase
             ClassesSince = hasClassesCheckpoint ? classesSince : null,
             SectionsSince = hasSectionsCheckpoint ? sectionsSince : null,
             ScheduleSince = hasScheduleCheckpoint ? scheduleSince : null,
+            GradesSince = hasGradesCheckpoint ? gradesSince : null,
+            GradeChangedStudentIds = gradeChangedStudentIds,
             CheckpointAt = checkpointAt
         };
     }
@@ -562,6 +588,11 @@ public class SyncController : ControllerBase
         if (plan.SyncSchedule)
         {
             await UpsertCheckpoint(ScheduleCheckpointKey, plan.CheckpointAt, cancellationToken);
+        }
+
+        if (plan.SyncGrades)
+        {
+            await UpsertCheckpoint(GradesCheckpointKey, plan.CheckpointAt, cancellationToken);
         }
     }
 
