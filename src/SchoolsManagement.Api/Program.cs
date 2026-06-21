@@ -102,6 +102,7 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<UserPermissionService>();
 builder.Services.AddScoped<PermissionMatrixService>();
 builder.Services.AddScoped<ParentsAppIngestService>();
+builder.Services.AddScoped<ParentsGradesQueryService>();
 builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
 builder.Services.AddScoped<BusAppIngestService>();
 builder.Services.AddScoped<BusRemoteSyncPublisher>();

@@ -96,6 +96,7 @@ public class SyncController : ControllerBase
         try
         {
             await ParentsAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
+            await ParentsGradesTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
             var counts = new ParentsRemoteDataCounts
             {
                 Students = await _db.ParentsStudentSummaries.CountAsync(cancellationToken),
@@ -104,7 +105,10 @@ public class SyncController : ControllerBase
                 Attendance = await _db.ParentsAttendanceSummaries.CountAsync(cancellationToken),
                 StudentReports = await _db.ParentsStudentReports.CountAsync(cancellationToken),
                 Installments = await _db.ParentsStudentInstallments.CountAsync(cancellationToken),
-                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken)
+                SchedulePeriods = await _db.ParentsSchedulePeriods.CountAsync(cancellationToken),
+                Grades = await _db.ParentsGradePublishes.CountAsync(cancellationToken),
+                Subjects = await _db.ParentsSubjectPublishes.CountAsync(cancellationToken),
+                Exams = await _db.ParentsExamPublishes.CountAsync(cancellationToken)
             };
             return Ok(counts);
         }

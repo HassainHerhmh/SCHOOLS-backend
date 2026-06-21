@@ -12,6 +12,10 @@ public class ParentsSyncIngestPayload
     public List<ParentsSchedulePeriodIngestDto>? SchedulePeriods { get; set; }
     public bool ScheduleFullReplace { get; set; }
     public ParentsScheduleSettingsIngestDto? ScheduleSettings { get; set; }
+    public List<ParentsGradeIngestDto>? Grades { get; set; }
+    public List<ParentsSubjectIngestDto>? Subjects { get; set; }
+    public List<ParentsExamIngestDto>? Exams { get; set; }
+    public bool GradesReferenceFullReplace { get; set; }
 }
 
 public class ParentsStudentReportIngestDto
@@ -116,6 +120,57 @@ public class ParentsScheduleSettingsIngestDto
     public int PeriodsCount { get; set; } = 6;
 }
 
+public class ParentsGradeIngestDto
+{
+    public Guid Id { get; set; }
+    public Guid StudentId { get; set; }
+    public Guid SubjectId { get; set; }
+    public string? SubjectName { get; set; }
+    public Guid? ExamId { get; set; }
+    public string? ExamType { get; set; }
+    public string? ExamName { get; set; }
+    public decimal Score { get; set; }
+    public decimal MaxScore { get; set; }
+    public decimal? Percentage { get; set; }
+    public string? ExamDate { get; set; }
+    public int AcademicYear { get; set; }
+    public string Semester { get; set; } = "first";
+    public string? Notes { get; set; }
+}
+
+public class ParentsGradeRuleIngestDto
+{
+    public Guid Id { get; set; }
+    public decimal MinPercentage { get; set; }
+    public decimal MaxPercentage { get; set; }
+    public string GradeLetter { get; set; } = string.Empty;
+    public string? GradeLabel { get; set; }
+    public int DisplayOrder { get; set; }
+}
+
+public class ParentsSubjectIngestDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public Guid? ClassId { get; set; }
+    public string? ClassName { get; set; }
+    public decimal MaxScore { get; set; } = 100;
+}
+
+public class ParentsExamIngestDto
+{
+    public Guid Id { get; set; }
+    public Guid SubjectId { get; set; }
+    public string? SubjectName { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string ExamType { get; set; } = "exam";
+    public decimal MaxScore { get; set; }
+    public string? ExamDate { get; set; }
+    public int AcademicYear { get; set; }
+    public string Semester { get; set; } = "first";
+    public string? MonthKey { get; set; }
+}
+
 public class ParentsIngestResult
 {
     public int Students { get; set; }
@@ -126,9 +181,13 @@ public class ParentsIngestResult
     public int Installments { get; set; }
     public int SchedulePeriods { get; set; }
     public int ScheduleSettings { get; set; }
+    public int Grades { get; set; }
+    public int Subjects { get; set; }
+    public int Exams { get; set; }
 
     public int Total => Students + Classes + Sections + Attendance + StudentReports
-                        + Installments + SchedulePeriods + ScheduleSettings;
+                        + Installments + SchedulePeriods + ScheduleSettings
+                        + Grades + Subjects + Exams;
 }
 
 public class ParentsRemoteDataCounts
@@ -140,6 +199,9 @@ public class ParentsRemoteDataCounts
     public int StudentReports { get; set; }
     public int Installments { get; set; }
     public int SchedulePeriods { get; set; }
+    public int Grades { get; set; }
+    public int Subjects { get; set; }
+    public int Exams { get; set; }
 }
 
 /// <summary>نتيجة رفع + تحقق من وجود البيانات على سيرفر رويال (للعرض في الواجهة).</summary>

@@ -67,6 +67,25 @@ public class ParentsRemoteSyncPublisher
 
         if (plan.SyncStudents)
         {
+            onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع المواد والاختبارات");
+            var subjects = await LoadSubjectsAsync(cancellationToken);
+            var exams = await LoadExamsAsync(cancellationToken);
+            if (subjects.Count > 0 || exams.Count > 0)
+            {
+                var refResult = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
+                {
+                    SchoolId = schoolId,
+                    Subjects = subjects,
+                    Exams = exams,
+                    GradesReferenceFullReplace = true
+                }, cancellationToken);
+                aggregate.Subjects += refResult.Subjects;
+                aggregate.Exams += refResult.Exams;
+            }
+        }
+
+        if (plan.SyncStudents)
+        {
             onProgress?.Invoke(uploadedItems, totalItems, "جاري رفع بيانات الطلاب إلى السيرفر الخارجي");
             var students = await LoadStudentsAsync(plan, cancellationToken);
             PaymentInstallmentSettingsRecord? installmentSettings = null;
@@ -93,16 +112,20 @@ public class ParentsRemoteSyncPublisher
                     installmentChunk = await LoadInstallmentsAsync(plan, studentIds, installmentSettings, cancellationToken);
                 }
 
+                var gradeChunk = await LoadGradesForStudentsAsync(studentIds, cancellationToken);
+
                 var result = await PostIngestAsync(client, ingestUrl, syncKey, schoolId, new ParentsSyncIngestPayload
                 {
                     SchoolId = schoolId,
                     Students = chunk,
                     StudentReports = reportChunk,
-                    Installments = installmentChunk
+                    Installments = installmentChunk,
+                    Grades = gradeChunk
                 }, cancellationToken);
                 aggregate.Students += result.Students;
                 aggregate.StudentReports += result.StudentReports;
                 aggregate.Installments += result.Installments;
+                aggregate.Grades += result.Grades;
                 if (chunk.Count > 0 && result.Students <= 0)
                 {
                     throw new InvalidOperationException(
@@ -553,6 +576,70 @@ public class ParentsRemoteSyncPublisher
         }
 
         return null;
+    }
+
+    private async Task<List<ParentsGradeIngestDto>> LoadGradesForStudentsAsync(
+        List<Guid> studentIds,
+        CancellationToken ct)
+    {
+        if (studentIds.Count == 0) return [];
+
+        return await _db.Grades.AsNoTracking()
+            .Where(g => studentIds.Contains(g.StudentId))
+            .Select(g => new ParentsGradeIngestDto
+            {
+                Id = g.Id,
+                StudentId = g.StudentId,
+                SubjectId = g.SubjectId,
+                SubjectName = g.SubjectName,
+                ExamId = g.ExamId,
+                ExamType = g.ExamType,
+                ExamName = g.ExamName,
+                Score = g.Score,
+                MaxScore = g.MaxScore,
+                Percentage = g.Percentage,
+                ExamDate = g.ExamDate.HasValue ? g.ExamDate.Value.ToString("yyyy-MM-dd") : null,
+                AcademicYear = g.AcademicYear,
+                Semester = g.Semester,
+                Notes = g.Notes
+            })
+            .ToListAsync(ct);
+    }
+
+    private async Task<List<ParentsSubjectIngestDto>> LoadSubjectsAsync(CancellationToken ct)
+    {
+        var classes = await _db.GradeClasses.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+        var rows = await _db.Subjects.AsNoTracking().ToListAsync(ct);
+        return rows.Select(s => new ParentsSubjectIngestDto
+        {
+            Id = s.Id,
+            Name = s.Name,
+            ClassId = s.ClassId,
+            ClassName = classes.TryGetValue(s.ClassId, out var name) ? name : null,
+            MaxScore = 100
+        }).ToList();
+    }
+
+    private async Task<List<ParentsExamIngestDto>> LoadExamsAsync(CancellationToken ct)
+    {
+        var year = DateTime.UtcNow.Year;
+        var subjects = await _db.Subjects.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var rows = await _db.Exams.AsNoTracking()
+            .Where(e => e.AcademicYear == year || e.AcademicYear == null)
+            .ToListAsync(ct);
+        return rows.Select(e => new ParentsExamIngestDto
+        {
+            Id = e.Id,
+            SubjectId = e.SubjectId,
+            SubjectName = subjects.TryGetValue(e.SubjectId, out var name) ? name : null,
+            Name = e.Title,
+            ExamType = e.ActivityType ?? e.ScheduleKind,
+            MaxScore = e.MaxScore,
+            ExamDate = e.ExamDate?.ToString("yyyy-MM-dd"),
+            AcademicYear = e.AcademicYear ?? year,
+            Semester = e.Semester,
+            MonthKey = e.ExamMonth
+        }).ToList();
     }
 
     public sealed class ParentsSyncPlan

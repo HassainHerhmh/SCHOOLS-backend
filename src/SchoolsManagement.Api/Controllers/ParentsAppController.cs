@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
@@ -12,8 +13,13 @@ namespace SchoolsManagement.Api.Controllers;
 public class ParentsAppController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly ParentsGradesQueryService _gradesQuery;
 
-    public ParentsAppController(ApplicationDbContext db) => _db = db;
+    public ParentsAppController(ApplicationDbContext db, ParentsGradesQueryService gradesQuery)
+    {
+        _db = db;
+        _gradesQuery = gradesQuery;
+    }
 
     [HttpGet("students")]
     public async Task<IActionResult> StudentsByParentPhone([FromQuery] string parent_phone, CancellationToken ct)
@@ -50,6 +56,22 @@ public class ParentsAppController : ControllerBase
             .ToListAsync(ct);
 
         return Ok(list);
+    }
+
+    /// <summary>حزمة درجات الطالب (شهري / فصلي / سنوي) مع المواد والاختبارات.</summary>
+    [HttpGet("grades-bundle")]
+    public async Task<IActionResult> GradesBundle(
+        [FromQuery] Guid student_id,
+        [FromQuery] int? academic_year,
+        CancellationToken ct)
+    {
+        if (student_id == Guid.Empty)
+        {
+            return BadRequest(new { message = "معرّف الطالب مطلوب." });
+        }
+
+        var bundle = await _gradesQuery.GetBundleAsync(student_id, academic_year, ct);
+        return Ok(bundle);
     }
 
     [HttpGet("classes")]

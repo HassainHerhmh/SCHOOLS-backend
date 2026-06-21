@@ -248,6 +248,106 @@ public class ParentsAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        await IngestGradesAsync(_db, payload, syncedAt, result, cancellationToken);
+
         return result;
+    }
+
+    private static async Task IngestGradesAsync(
+        ApplicationDbContext db,
+        ParentsSyncIngestPayload payload,
+        DateTimeOffset syncedAt,
+        ParentsIngestResult result,
+        CancellationToken cancellationToken)
+    {
+        if (payload.GradesReferenceFullReplace)
+        {
+            await db.ParentsSubjectPublishes.ExecuteDeleteAsync(cancellationToken);
+            await db.ParentsExamPublishes.ExecuteDeleteAsync(cancellationToken);
+        }
+
+        if (payload.Subjects is { Count: > 0 })
+        {
+            foreach (var s in payload.Subjects)
+            {
+                db.ParentsSubjectPublishes.Add(new ParentsSubjectPublishRecord
+                {
+                    Id = s.Id,
+                    Name = s.Name,
+                    ClassId = s.ClassId,
+                    ClassName = s.ClassName,
+                    MaxScore = s.MaxScore,
+                    SyncedAt = syncedAt
+                });
+                result.Subjects++;
+            }
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (payload.Exams is { Count: > 0 })
+        {
+            foreach (var e in payload.Exams)
+            {
+                DateOnly? examDate = null;
+                if (!string.IsNullOrWhiteSpace(e.ExamDate) && DateOnly.TryParse(e.ExamDate, out var parsed))
+                {
+                    examDate = parsed;
+                }
+
+                db.ParentsExamPublishes.Add(new ParentsExamPublishRecord
+                {
+                    Id = e.Id,
+                    SubjectId = e.SubjectId,
+                    SubjectName = e.SubjectName,
+                    Name = e.Name,
+                    ExamType = e.ExamType,
+                    MaxScore = e.MaxScore,
+                    ExamDate = examDate,
+                    AcademicYear = e.AcademicYear,
+                    Semester = e.Semester,
+                    MonthKey = e.MonthKey,
+                    SyncedAt = syncedAt
+                });
+                result.Exams++;
+            }
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (payload.Grades is { Count: > 0 })
+        {
+            foreach (var g in payload.Grades)
+            {
+                DateOnly? examDate = null;
+                if (!string.IsNullOrWhiteSpace(g.ExamDate) && DateOnly.TryParse(g.ExamDate, out var parsed))
+                {
+                    examDate = parsed;
+                }
+
+                var row = await db.ParentsGradePublishes.FirstOrDefaultAsync(x => x.Id == g.Id, cancellationToken);
+                if (row is null)
+                {
+                    row = new ParentsGradePublishRecord { Id = g.Id };
+                    db.ParentsGradePublishes.Add(row);
+                }
+
+                row.StudentId = g.StudentId;
+                row.SubjectId = g.SubjectId;
+                row.SubjectName = g.SubjectName;
+                row.ExamId = g.ExamId;
+                row.ExamType = g.ExamType;
+                row.ExamName = g.ExamName;
+                row.Score = g.Score;
+                row.MaxScore = g.MaxScore;
+                row.Percentage = g.Percentage;
+                row.ExamDate = examDate;
+                row.AcademicYear = g.AcademicYear;
+                row.Semester = g.Semester;
+                row.Notes = g.Notes;
+                row.SyncedAt = syncedAt;
+                result.Grades++;
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 }

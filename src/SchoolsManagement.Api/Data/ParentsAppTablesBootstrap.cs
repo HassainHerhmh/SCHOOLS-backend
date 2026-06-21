@@ -562,7 +562,7 @@ CREATE TABLE IF NOT EXISTS parents_schedule_settings (
         {
 
             await EnsureMySqlParentsTablesAsync(db, cancellationToken);
-
+            await ParentsGradesTablesBootstrap.EnsureExistsAsync(db, cancellationToken);
             return;
 
         }
@@ -570,6 +570,7 @@ CREATE TABLE IF NOT EXISTS parents_schedule_settings (
 
 
         EnsureExists(db);
+        await ParentsGradesTablesBootstrap.EnsureExistsAsync(db, cancellationToken);
 
     }
 

@@ -105,6 +105,29 @@ public static class ParentsSyncVerification
             }
         }
 
+        if (uploaded.Grades > 0)
+        {
+            if (remote is null)
+            {
+                issues.Add("تعذر قراءة عدد الدرجات من السيرفر الخارجي بعد الرفع.");
+            }
+            else if (remote.Grades <= 0)
+            {
+                issues.Add(
+                    $"جدول الدرجات على السيرفر الخارجي فارغ رغم رفع {uploaded.Grades} سجلًا — تحقق من جدول parents_grades.");
+            }
+        }
+
+        if (uploaded.Subjects > 0 && remote?.Subjects <= 0)
+        {
+            issues.Add("جدول المواد على السيرفر الخارجي فارغ بعد الرفع.");
+        }
+
+        if (uploaded.Exams > 0 && remote?.Exams <= 0)
+        {
+            issues.Add("جدول الاختبارات على السيرفر الخارجي فارغ بعد الرفع.");
+        }
+
         if (issues.Count > 0)
         {
             return new ParentsPublishOutcome
@@ -151,6 +174,21 @@ public static class ParentsSyncVerification
         if (uploaded.SchedulePeriods > 0)
         {
             parts.Add($"{uploaded.SchedulePeriods} حصة");
+        }
+
+        if (uploaded.Grades > 0)
+        {
+            parts.Add($"{uploaded.Grades} درجة");
+        }
+
+        if (uploaded.Subjects > 0)
+        {
+            parts.Add($"{uploaded.Subjects} مادة");
+        }
+
+        if (uploaded.Exams > 0)
+        {
+            parts.Add($"{uploaded.Exams} اختبار");
         }
 
         var detail = parts.Count > 0 ? string.Join("، ", parts) : $"{plan.TotalItems} عنصر";

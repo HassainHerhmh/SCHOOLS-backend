@@ -60,6 +60,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ParentsStudentInstallmentRecord> ParentsStudentInstallments => Set<ParentsStudentInstallmentRecord>();
     public DbSet<ParentsSchedulePeriodRecord> ParentsSchedulePeriods => Set<ParentsSchedulePeriodRecord>();
     public DbSet<ParentsScheduleSettingsRecord> ParentsScheduleSettings => Set<ParentsScheduleSettingsRecord>();
+    public DbSet<ParentsGradePublishRecord> ParentsGradePublishes => Set<ParentsGradePublishRecord>();
+    public DbSet<ParentsSubjectPublishRecord> ParentsSubjectPublishes => Set<ParentsSubjectPublishRecord>();
+    public DbSet<ParentsExamPublishRecord> ParentsExamPublishes => Set<ParentsExamPublishRecord>();
     public DbSet<BusDriverLocationRecord> BusDriverLocations => Set<BusDriverLocationRecord>();
     public DbSet<BusAppDriverRecord> BusAppDrivers => Set<BusAppDriverRecord>();
     public DbSet<BusAppStudentRecord> BusAppStudents => Set<BusAppStudentRecord>();
