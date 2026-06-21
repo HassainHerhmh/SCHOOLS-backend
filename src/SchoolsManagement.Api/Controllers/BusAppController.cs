@@ -136,8 +136,7 @@ public class BusAppController : ControllerBase
                 .ToListAsync(ct);
         }
 
-        var baseLat = 15.3694;
-        var baseLng = 44.1910;
+        var (baseLat, baseLng) = await ResolveRouteCenterAsync(driverId.Value, ct);
         var points = new List<object>
         {
             new { label = "انطلاق المدرسة", latitude = baseLat, longitude = baseLng, order = 0 }
@@ -158,6 +157,27 @@ public class BusAppController : ControllerBase
         points.Add(new { label = "العودة للمدرسة", latitude = baseLat, longitude = baseLng, order = sites.Count + 1 });
 
         return Ok(new { points });
+    }
+
+    private async Task<(double Latitude, double Longitude)> ResolveRouteCenterAsync(Guid driverId, CancellationToken ct)
+    {
+        var published = await _db.BusAppLocations.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.DriverId == driverId, ct);
+        if (published is not null)
+        {
+            return (published.Latitude, published.Longitude);
+        }
+
+        var latest = await _db.BusDriverLocations.AsNoTracking()
+            .Where(x => x.DriverId == driverId)
+            .OrderByDescending(x => x.RecordedAt)
+            .FirstOrDefaultAsync(ct);
+        if (latest is not null)
+        {
+            return (latest.Latitude, latest.Longitude);
+        }
+
+        return (15.3694, 44.1910);
     }
 
     private static object MapLocation(

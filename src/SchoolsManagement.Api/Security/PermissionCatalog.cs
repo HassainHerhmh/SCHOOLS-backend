@@ -53,7 +53,7 @@ public static class PermissionCatalog
         new(AccountingEmployees, "رواتب الموظفين", "الموظفين"),
         new(BusUsers, "الباصات — المستخدمون", "الباصات"),
         new(BusSites, "الباصات — إدارة المواقع", "الباصات"),
-        new(ParentAppSync, "مزامنة تطبيق الآباء", "تطبيق الآباء"),
+        new(ParentAppSync, "مزامنة التطبيقات", "مزامنة التطبيقات"),
     ];
 
     public static IReadOnlySet<string> AllKeys { get; } =
