@@ -102,12 +102,14 @@ public class BusRemoteSyncPublisher
         await BusAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
         var schoolSettingsRow = await _db.BusSchoolSettings.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == 1, cancellationToken);
-        BusSchoolSettingsIngestDto? schoolSettings = schoolSettingsRow is null
-            ? null
-            : new BusSchoolSettingsIngestDto
+        BusSchoolSettingsIngestDto? schoolSettings = null;
+        if (schoolSettingsRow is not null && !string.IsNullOrWhiteSpace(schoolSettingsRow.LocationUrl))
+        {
+            schoolSettings = new BusSchoolSettingsIngestDto
             {
                 LocationUrl = schoolSettingsRow.LocationUrl
             };
+        }
 
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromMinutes(5);

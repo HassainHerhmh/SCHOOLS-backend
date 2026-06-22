@@ -36,20 +36,25 @@ public static class BusMapsUrlHelper
             return false;
         }
 
-        var atMatch = Regex.Match(rawUrl, @"@(-?\d+\.\d+),\s*(-?\d+\.\d+)");
-        if (atMatch.Success
-            && double.TryParse(atMatch.Groups[1].Value, out latitude)
-            && double.TryParse(atMatch.Groups[2].Value, out longitude))
+        var patterns = new[]
         {
-            return true;
-        }
+            @"@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)",
+            @"[?&]q=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)",
+            @"[?&]query=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)",
+            @"[?&]ll=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)",
+            @"[?&]destination=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)",
+            @"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)"
+        };
 
-        var qMatch = Regex.Match(rawUrl, @"[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)");
-        if (qMatch.Success
-            && double.TryParse(qMatch.Groups[1].Value, out latitude)
-            && double.TryParse(qMatch.Groups[2].Value, out longitude))
+        foreach (var pattern in patterns)
         {
-            return true;
+            var match = Regex.Match(rawUrl, pattern, RegexOptions.IgnoreCase);
+            if (match.Success
+                && double.TryParse(match.Groups[1].Value, out latitude)
+                && double.TryParse(match.Groups[2].Value, out longitude))
+            {
+                return true;
+            }
         }
 
         return false;
