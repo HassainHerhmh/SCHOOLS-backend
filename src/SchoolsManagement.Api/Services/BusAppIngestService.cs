@@ -58,6 +58,7 @@ public class BusAppIngestService
                 row.Level = student.Level;
                 row.Section = student.Section;
                 row.BusSiteName = student.BusSiteName;
+                row.BusLocationUrl = student.BusLocationUrl;
                 row.SyncedAt = syncedAt;
                 result.Students++;
             }

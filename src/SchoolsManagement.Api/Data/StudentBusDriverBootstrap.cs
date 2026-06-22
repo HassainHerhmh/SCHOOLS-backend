@@ -15,6 +15,11 @@ BEGIN
     ALTER TABLE dbo.students ADD bus_driver_name nvarchar(500) NULL;
 END
 
+IF COL_LENGTH(N'dbo.students', N'bus_location_url') IS NULL
+BEGIN
+    ALTER TABLE dbo.students ADD bus_location_url nvarchar(2000) NULL;
+END
+
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
     WHERE name = N'IX_students_bus_driver_id'

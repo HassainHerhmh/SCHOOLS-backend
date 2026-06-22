@@ -39,7 +39,8 @@ public class BusAppController : ControllerBase
                 parent_phone = s.ParentPhone,
                 s.Level,
                 s.Section,
-                bus_site_name = s.BusSiteName
+                bus_site_name = s.BusSiteName,
+                bus_location_url = s.BusLocationUrl
             })
             .ToListAsync(ct);
 
@@ -60,7 +61,8 @@ public class BusAppController : ControllerBase
                 parent_phone = s.ParentPhone,
                 s.Level,
                 s.Section,
-                bus_site_name = s.BusSiteName
+                bus_site_name = s.BusSiteName,
+                bus_location_url = s.BusLocationUrl
             })
             .ToListAsync(ct);
 

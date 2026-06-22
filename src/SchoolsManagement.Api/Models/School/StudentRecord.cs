@@ -82,6 +82,11 @@ public class StudentRecord
     [MaxLength(500)]
     public string? BusDriverName { get; set; }
 
+    /// <summary>رابط موقع الطالب على خرائط Google (للسائق).</summary>
+    [Column("bus_location_url")]
+    [MaxLength(2000)]
+    public string? BusLocationUrl { get; set; }
+
     [Column("created_at")]
     public DateTimeOffset? CreatedAt { get; set; }
 

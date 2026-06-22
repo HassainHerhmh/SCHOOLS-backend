@@ -19,4 +19,5 @@ public class UpsertStudentRequest
     public string? BusSiteName { get; set; }
     public Guid? BusDriverId { get; set; }
     public string? BusDriverName { get; set; }
+    public string? BusLocationUrl { get; set; }
 }

@@ -148,6 +148,7 @@ public static class DatabaseBackupCatalog
         ["status"] = "الحالة",
         ["bus_site_id"] = "معرف موقع الحافلة",
         ["bus_site_name"] = "موقع الحافلة",
+        ["bus_location_url"] = "رابط موقع الطالب",
         ["bus_driver_id"] = "معرف سائق الباص",
         ["bus_driver_name"] = "سائق الباص",
         ["created_at"] = "تاريخ الإنشاء",

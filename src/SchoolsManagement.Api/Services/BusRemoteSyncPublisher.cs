@@ -79,7 +79,8 @@ public class BusRemoteSyncPublisher
                 ParentPhone = s.ParentPhone,
                 Level = s.Level,
                 Section = s.Section,
-                BusSiteName = s.BusSiteName
+                BusSiteName = s.BusSiteName,
+                BusLocationUrl = s.BusLocationUrl
             })
             .ToListAsync(cancellationToken);
 

@@ -92,6 +92,10 @@ public class BusAppStudentRecord
     [MaxLength(300)]
     public string? BusSiteName { get; set; }
 
+    [Column("bus_location_url")]
+    [MaxLength(2000)]
+    public string? BusLocationUrl { get; set; }
+
     [Column("synced_at")]
     public DateTimeOffset SyncedAt { get; set; }
 }
@@ -190,6 +194,9 @@ public class BusAppStudentIngestDto
 
     [JsonPropertyName("bus_site_name")]
     public string? BusSiteName { get; set; }
+
+    [JsonPropertyName("bus_location_url")]
+    public string? BusLocationUrl { get; set; }
 }
 
 public class BusAppLocationIngestDto

@@ -64,6 +64,17 @@ BEGIN
 END
 """;
 
+    private const string SqlServerAlterSql = """
+IF COL_LENGTH(N'dbo.bus_app_students', N'bus_location_url') IS NULL
+BEGIN
+    ALTER TABLE dbo.bus_app_students ADD bus_location_url nvarchar(2000) NULL;
+END
+""";
+
+    private const string MySqlAlterSql = """
+ALTER TABLE bus_app_students ADD COLUMN IF NOT EXISTS bus_location_url varchar(2000) NULL;
+""";
+
     public static void EnsureExists(ApplicationDbContext db)
     {
         if (DatabaseProviderHelper.IsMySql(db))
@@ -73,6 +84,7 @@ END
         }
 
         db.Database.ExecuteSqlRaw(SqlServerSql);
+        db.Database.ExecuteSqlRaw(SqlServerAlterSql);
     }
 
     public static async Task EnsureExistsAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
@@ -84,6 +96,7 @@ END
         }
 
         await db.Database.ExecuteSqlRawAsync(SqlServerSql, cancellationToken);
+        await db.Database.ExecuteSqlRawAsync(SqlServerAlterSql, cancellationToken);
     }
 
     private const string MySqlSql = """
@@ -144,6 +157,8 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
 
             db.Database.ExecuteSqlRaw(statement);
         }
+
+        db.Database.ExecuteSqlRaw(MySqlAlterSql);
     }
 
     public static async Task EnsureMySqlBusTablesAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
@@ -157,5 +172,7 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
 
             await db.Database.ExecuteSqlRawAsync(statement, cancellationToken);
         }
+
+        await db.Database.ExecuteSqlRawAsync(MySqlAlterSql, cancellationToken);
     }
 }

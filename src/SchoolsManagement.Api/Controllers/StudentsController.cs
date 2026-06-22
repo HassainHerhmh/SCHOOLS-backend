@@ -79,6 +79,7 @@ public class StudentsController : ControllerBase
             BusSiteName = body.BusSiteName,
             BusDriverId = body.BusDriverId,
             BusDriverName = body.BusDriverName,
+            BusLocationUrl = NormalizeLocationUrl(body.BusLocationUrl),
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -125,6 +126,7 @@ public class StudentsController : ControllerBase
         entity.BusSiteName = body.BusSiteName;
         entity.BusDriverId = body.BusDriverId;
         entity.BusDriverName = body.BusDriverName;
+        entity.BusLocationUrl = NormalizeLocationUrl(body.BusLocationUrl);
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -164,5 +166,11 @@ public class StudentsController : ControllerBase
         _db.StudentRecords.Remove(entity);
         await _db.SaveChangesAsync(cancellationToken);
         return NoContent();
+    }
+
+    private static string? NormalizeLocationUrl(string? url)
+    {
+        var trimmed = url?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 }
