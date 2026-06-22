@@ -89,6 +89,20 @@ public class BusAppIngestService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (payload.SchoolSettings is not null)
+        {
+            var row = await _db.BusSchoolSettings.FirstOrDefaultAsync(x => x.Id == 1, cancellationToken);
+            if (row is null)
+            {
+                row = new BusSchoolSettingsRecord { Id = 1 };
+                _db.BusSchoolSettings.Add(row);
+            }
+
+            row.LocationUrl = BusMapsUrlHelper.NormalizeUrl(payload.SchoolSettings.LocationUrl);
+            row.UpdatedAt = syncedAt;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         return result;
     }
 }

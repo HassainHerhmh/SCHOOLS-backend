@@ -67,6 +67,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<BusAppDriverRecord> BusAppDrivers => Set<BusAppDriverRecord>();
     public DbSet<BusAppStudentRecord> BusAppStudents => Set<BusAppStudentRecord>();
     public DbSet<BusAppLocationRecord> BusAppLocations => Set<BusAppLocationRecord>();
+    public DbSet<BusSchoolSettingsRecord> BusSchoolSettings => Set<BusSchoolSettingsRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

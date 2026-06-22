@@ -161,6 +161,9 @@ public class BusSyncIngestPayload
 
     [JsonPropertyName("locations")]
     public List<BusAppLocationIngestDto>? Locations { get; set; }
+
+    [JsonPropertyName("school_settings")]
+    public BusSchoolSettingsIngestDto? SchoolSettings { get; set; }
 }
 
 public class BusAppDriverIngestDto
@@ -221,4 +224,24 @@ public class BusIngestResult
     public int Drivers { get; set; }
     public int Students { get; set; }
     public int Locations { get; set; }
+}
+
+[Table("bus_school_settings")]
+public class BusSchoolSettingsRecord
+{
+    [Key]
+    public int Id { get; set; } = 1;
+
+    [Column("location_url")]
+    [MaxLength(2000)]
+    public string? LocationUrl { get; set; }
+
+    [Column("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public class BusSchoolSettingsIngestDto
+{
+    [JsonPropertyName("location_url")]
+    public string? LocationUrl { get; set; }
 }

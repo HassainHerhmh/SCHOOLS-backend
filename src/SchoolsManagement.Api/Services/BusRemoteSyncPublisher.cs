@@ -99,6 +99,16 @@ public class BusRemoteSyncPublisher
             RecordedAt = x.RecordedAt
         }).ToList();
 
+        await BusAppTablesBootstrap.EnsureExistsAsync(_db, cancellationToken);
+        var schoolSettingsRow = await _db.BusSchoolSettings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == 1, cancellationToken);
+        BusSchoolSettingsIngestDto? schoolSettings = schoolSettingsRow is null
+            ? null
+            : new BusSchoolSettingsIngestDto
+            {
+                LocationUrl = schoolSettingsRow.LocationUrl
+            };
+
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromMinutes(5);
         var ingestUrl = $"{remoteUrl}/api/sync/ingest-bus";
@@ -107,7 +117,8 @@ public class BusRemoteSyncPublisher
             SchoolId = schoolId,
             Drivers = drivers,
             Students = students,
-            Locations = locations
+            Locations = locations,
+            SchoolSettings = schoolSettings
         };
 
         var json = JsonSerializer.Serialize(payload, JsonOptions);

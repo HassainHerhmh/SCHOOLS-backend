@@ -69,6 +69,21 @@ public class BusAppController : ControllerBase
         return Ok(local);
     }
 
+    [HttpGet("school-location")]
+    [Authorize]
+    public async Task<IActionResult> SchoolLocation(CancellationToken ct)
+    {
+        await BusAppTablesBootstrap.EnsureExistsAsync(_db, ct);
+        var row = await _db.BusSchoolSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
+        var url = BusMapsUrlHelper.NormalizeUrl(row?.LocationUrl);
+        return Ok(new
+        {
+            location_url = url,
+            navigation_url = url is null ? null : BusMapsUrlHelper.ToNavigationUrl(url),
+            has_location = !string.IsNullOrWhiteSpace(url)
+        });
+    }
+
     [HttpGet("location")]
     [Authorize]
     public async Task<IActionResult> Location(CancellationToken ct)
@@ -138,10 +153,24 @@ public class BusAppController : ControllerBase
                 .ToListAsync(ct);
         }
 
-        var (baseLat, baseLng) = await ResolveRouteCenterAsync(driverId.Value, ct);
+        var schoolCoords = await ResolveSchoolCoordinatesAsync(ct);
+        double schoolLat;
+        double schoolLng;
+        if (schoolCoords.Latitude is not null && schoolCoords.Longitude is not null)
+        {
+            schoolLat = schoolCoords.Latitude.Value;
+            schoolLng = schoolCoords.Longitude.Value;
+        }
+        else
+        {
+            var center = await ResolveRouteCenterAsync(driverId.Value, ct);
+            schoolLat = center.Latitude;
+            schoolLng = center.Longitude;
+        }
+
         var points = new List<object>
         {
-            new { label = "انطلاق المدرسة", latitude = baseLat, longitude = baseLng, order = 0 }
+            new { label = "المدرسة", latitude = schoolLat, longitude = schoolLng, order = 0 }
         };
 
         for (var i = 0; i < sites.Count; i++)
@@ -150,13 +179,13 @@ public class BusAppController : ControllerBase
             points.Add(new
             {
                 label = sites[i],
-                latitude = baseLat + Math.Sin(angle) * 0.02,
-                longitude = baseLng + Math.Cos(angle) * 0.02,
+                latitude = schoolLat + Math.Sin(angle) * 0.02,
+                longitude = schoolLng + Math.Cos(angle) * 0.02,
                 order = i + 1
             });
         }
 
-        points.Add(new { label = "العودة للمدرسة", latitude = baseLat, longitude = baseLng, order = sites.Count + 1 });
+        points.Add(new { label = "العودة للمدرسة", latitude = schoolLat, longitude = schoolLng, order = sites.Count + 1 });
 
         return Ok(new { points });
     }
@@ -180,6 +209,18 @@ public class BusAppController : ControllerBase
         }
 
         return (15.3694, 44.1910);
+    }
+
+    private async Task<(double? Latitude, double? Longitude)> ResolveSchoolCoordinatesAsync(CancellationToken ct)
+    {
+        var row = await _db.BusSchoolSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
+        if (row?.LocationUrl is not null
+            && BusMapsUrlHelper.TryParseCoordinates(row.LocationUrl, out var lat, out var lng))
+        {
+            return (lat, lng);
+        }
+
+        return (null, null);
     }
 
     private static object MapLocation(

@@ -50,7 +50,7 @@ BEGIN
     CREATE INDEX IX_bus_app_students_driver ON dbo.bus_app_students(driver_id);
 END
 
-IF OBJECT_ID(N'dbo.bus_app_locations', N'U') IS NULL
+        IF OBJECT_ID(N'dbo.bus_app_locations', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.bus_app_locations (
         driver_id uniqueidentifier NOT NULL CONSTRAINT PK_bus_app_locations PRIMARY KEY,
@@ -61,6 +61,16 @@ BEGIN
         heading float NULL,
         recorded_at datetimeoffset(7) NOT NULL CONSTRAINT DF_bus_app_locations_recorded DEFAULT (sysdatetimeoffset())
     );
+END
+
+IF OBJECT_ID(N'dbo.bus_school_settings', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.bus_school_settings (
+        id int NOT NULL CONSTRAINT PK_bus_school_settings PRIMARY KEY,
+        location_url nvarchar(2000) NULL,
+        updated_at datetimeoffset(7) NOT NULL CONSTRAINT DF_bus_school_settings_updated DEFAULT (sysdatetimeoffset())
+    );
+    INSERT INTO dbo.bus_school_settings (id, location_url, updated_at) VALUES (1, NULL, sysdatetimeoffset());
 END
 """;
 
@@ -182,6 +192,12 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
     heading double NULL,
     recorded_at datetime(6) NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS bus_school_settings (
+    id int NOT NULL PRIMARY KEY,
+    location_url varchar(2000) NULL,
+    updated_at datetime(6) NOT NULL
+);
 """;
 
     private static void EnsureMySqlBusTables(ApplicationDbContext db)
@@ -197,6 +213,7 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
         }
 
         EnsureMySqlBusLocationColumn(db);
+        EnsureMySqlSchoolSettingsRow(db);
     }
 
     public static async Task EnsureMySqlBusTablesAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
@@ -212,5 +229,33 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
         }
 
         await EnsureMySqlBusLocationColumnAsync(db, cancellationToken);
+        await EnsureMySqlSchoolSettingsRowAsync(db, cancellationToken);
+    }
+
+    private static void EnsureMySqlSchoolSettingsRow(ApplicationDbContext db)
+    {
+        var count = db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS `Value` FROM bus_school_settings WHERE id = 1")
+            .FirstOrDefault();
+        if (count <= 0)
+        {
+            db.Database.ExecuteSqlRaw(
+                "INSERT INTO bus_school_settings (id, location_url, updated_at) VALUES (1, NULL, UTC_TIMESTAMP(6))");
+        }
+    }
+
+    private static async Task EnsureMySqlSchoolSettingsRowAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken = default)
+    {
+        var count = await db.Database.SqlQueryRaw<int>(
+                "SELECT COUNT(*) AS `Value` FROM bus_school_settings WHERE id = 1")
+            .FirstOrDefaultAsync(cancellationToken);
+        if (count <= 0)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO bus_school_settings (id, location_url, updated_at) VALUES (1, NULL, UTC_TIMESTAMP(6))",
+                cancellationToken);
+        }
     }
 }
