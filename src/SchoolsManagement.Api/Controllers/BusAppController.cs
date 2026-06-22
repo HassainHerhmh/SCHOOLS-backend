@@ -13,8 +13,13 @@ namespace SchoolsManagement.Api.Controllers;
 public class BusAppController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly BusMapsUrlExpander _maps;
 
-    public BusAppController(ApplicationDbContext db) => _db = db;
+    public BusAppController(ApplicationDbContext db, BusMapsUrlExpander maps)
+    {
+        _db = db;
+        _maps = maps;
+    }
 
     [HttpGet("students")]
     [Authorize]
@@ -75,22 +80,16 @@ public class BusAppController : ControllerBase
     {
         await BusAppTablesBootstrap.EnsureExistsAsync(_db, ct);
         var row = await _db.BusSchoolSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
-        var url = BusMapsUrlHelper.NormalizeUrl(row?.LocationUrl);
-        double? latitude = null;
-        double? longitude = null;
-        if (url is not null && BusMapsUrlHelper.TryParseCoordinates(url, out var parsedLat, out var parsedLng))
-        {
-            latitude = parsedLat;
-            longitude = parsedLng;
-        }
+        var url = await _maps.NormalizeForStorageAsync(row?.LocationUrl, ct);
+        var coords = await _maps.ResolveCoordinatesAsync(url, ct);
 
         return Ok(new
         {
             location_url = url,
             navigation_url = url is null ? null : BusMapsUrlHelper.ToNavigationUrl(url),
             has_location = !string.IsNullOrWhiteSpace(url),
-            latitude,
-            longitude
+            latitude = coords?.Latitude,
+            longitude = coords?.Longitude
         });
     }
 
@@ -224,13 +223,8 @@ public class BusAppController : ControllerBase
     private async Task<(double? Latitude, double? Longitude)> ResolveSchoolCoordinatesAsync(CancellationToken ct)
     {
         var row = await _db.BusSchoolSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
-        if (row?.LocationUrl is not null
-            && BusMapsUrlHelper.TryParseCoordinates(row.LocationUrl, out var lat, out var lng))
-        {
-            return (lat, lng);
-        }
-
-        return (null, null);
+        var coords = await _maps.ResolveCoordinatesAsync(row?.LocationUrl, ct);
+        return coords is null ? (null, null) : (coords.Value.Latitude, coords.Value.Longitude);
     }
 
     private static object MapLocation(

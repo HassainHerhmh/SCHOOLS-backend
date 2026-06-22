@@ -106,6 +106,7 @@ builder.Services.AddScoped<ParentsGradesQueryService>();
 builder.Services.AddScoped<ParentsRemoteSyncPublisher>();
 builder.Services.AddScoped<BusAppIngestService>();
 builder.Services.AddScoped<BusRemoteSyncPublisher>();
+builder.Services.AddScoped<BusMapsUrlExpander>();
 builder.Services.AddScoped<BusTokenService>();
 builder.Services.AddSingleton<DatabaseHealthChecker>();
 builder.Services.AddSingleton<ErrorLestLogger>();

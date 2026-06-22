@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SchoolsManagement.Api.Data;
 using SchoolsManagement.Api.Models.School;
+using SchoolsManagement.Api.Services;
 
 namespace SchoolsManagement.Api.Controllers;
 
@@ -12,8 +13,13 @@ namespace SchoolsManagement.Api.Controllers;
 public class BusSchoolSettingsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
+    private readonly BusMapsUrlExpander _maps;
 
-    public BusSchoolSettingsController(ApplicationDbContext db) => _db = db;
+    public BusSchoolSettingsController(ApplicationDbContext db, BusMapsUrlExpander maps)
+    {
+        _db = db;
+        _maps = maps;
+    }
 
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct)
@@ -31,7 +37,7 @@ public class BusSchoolSettingsController : ControllerBase
     public async Task<IActionResult> Save([FromBody] SaveBusSchoolSettingsRequest body, CancellationToken ct)
     {
         await BusAppTablesBootstrap.EnsureExistsAsync(_db, ct);
-        var url = string.IsNullOrWhiteSpace(body.LocationUrl) ? null : body.LocationUrl.Trim();
+        var url = await _maps.NormalizeForStorageAsync(body.LocationUrl, ct);
 
         var row = await _db.BusSchoolSettings.FirstOrDefaultAsync(x => x.Id == 1, ct);
         if (row is null)
@@ -44,10 +50,14 @@ public class BusSchoolSettingsController : ControllerBase
         row.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
+        var coords = await _maps.ResolveCoordinatesAsync(row.LocationUrl, ct);
+
         return Ok(new
         {
             message = "تم حفظ موقع المدرسة.",
             location_url = row.LocationUrl,
+            latitude = coords?.Latitude,
+            longitude = coords?.Longitude,
             updated_at = row.UpdatedAt
         });
     }

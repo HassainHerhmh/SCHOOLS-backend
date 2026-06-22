@@ -7,8 +7,13 @@ namespace SchoolsManagement.Api.Services;
 public class BusAppIngestService
 {
     private readonly ApplicationDbContext _db;
+    private readonly BusMapsUrlExpander _maps;
 
-    public BusAppIngestService(ApplicationDbContext db) => _db = db;
+    public BusAppIngestService(ApplicationDbContext db, BusMapsUrlExpander maps)
+    {
+        _db = db;
+        _maps = maps;
+    }
 
     public async Task<BusIngestResult> IngestAsync(BusSyncIngestPayload payload, CancellationToken cancellationToken = default)
     {
@@ -98,7 +103,7 @@ public class BusAppIngestService
                 _db.BusSchoolSettings.Add(row);
             }
 
-            row.LocationUrl = BusMapsUrlHelper.NormalizeUrl(payload.SchoolSettings.LocationUrl);
+            row.LocationUrl = await _maps.NormalizeForStorageAsync(payload.SchoolSettings.LocationUrl, cancellationToken);
             row.UpdatedAt = syncedAt;
             await _db.SaveChangesAsync(cancellationToken);
         }
