@@ -76,11 +76,21 @@ public class BusAppController : ControllerBase
         await BusAppTablesBootstrap.EnsureExistsAsync(_db, ct);
         var row = await _db.BusSchoolSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
         var url = BusMapsUrlHelper.NormalizeUrl(row?.LocationUrl);
+        double? latitude = null;
+        double? longitude = null;
+        if (url is not null && BusMapsUrlHelper.TryParseCoordinates(url, out var parsedLat, out var parsedLng))
+        {
+            latitude = parsedLat;
+            longitude = parsedLng;
+        }
+
         return Ok(new
         {
             location_url = url,
             navigation_url = url is null ? null : BusMapsUrlHelper.ToNavigationUrl(url),
-            has_location = !string.IsNullOrWhiteSpace(url)
+            has_location = !string.IsNullOrWhiteSpace(url),
+            latitude,
+            longitude
         });
     }
 
