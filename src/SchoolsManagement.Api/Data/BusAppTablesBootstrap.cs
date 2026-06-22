@@ -71,9 +71,46 @@ BEGIN
 END
 """;
 
-    private const string MySqlAlterSql = """
-ALTER TABLE bus_app_students ADD COLUMN IF NOT EXISTS bus_location_url varchar(2000) NULL;
-""";
+    private const string MySqlAlterSql =
+        "ALTER TABLE bus_app_students ADD COLUMN bus_location_url varchar(2000) NULL";
+
+    private static void EnsureMySqlBusLocationColumn(ApplicationDbContext db)
+    {
+        var exists = db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS `Value`
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'bus_app_students'
+                  AND column_name = 'bus_location_url'
+                """)
+            .FirstOrDefault() > 0;
+
+        if (!exists)
+        {
+            db.Database.ExecuteSqlRaw(MySqlAlterSql);
+        }
+    }
+
+    private static async Task EnsureMySqlBusLocationColumnAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken = default)
+    {
+        var exists = await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*) AS `Value`
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'bus_app_students'
+                  AND column_name = 'bus_location_url'
+                """)
+            .FirstOrDefaultAsync(cancellationToken) > 0;
+
+        if (!exists)
+        {
+            await db.Database.ExecuteSqlRawAsync(MySqlAlterSql, cancellationToken);
+        }
+    }
 
     public static void EnsureExists(ApplicationDbContext db)
     {
@@ -131,6 +168,7 @@ CREATE TABLE IF NOT EXISTS bus_app_students (
     level varchar(200) NOT NULL,
     section varchar(200) NOT NULL,
     bus_site_name varchar(300) NULL,
+    bus_location_url varchar(2000) NULL,
     synced_at datetime(6) NOT NULL,
     INDEX IX_bus_app_students_driver (driver_id)
 );
@@ -158,7 +196,7 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
             db.Database.ExecuteSqlRaw(statement);
         }
 
-        db.Database.ExecuteSqlRaw(MySqlAlterSql);
+        EnsureMySqlBusLocationColumn(db);
     }
 
     public static async Task EnsureMySqlBusTablesAsync(ApplicationDbContext db, CancellationToken cancellationToken = default)
@@ -173,6 +211,6 @@ CREATE TABLE IF NOT EXISTS bus_app_locations (
             await db.Database.ExecuteSqlRawAsync(statement, cancellationToken);
         }
 
-        await db.Database.ExecuteSqlRawAsync(MySqlAlterSql, cancellationToken);
+        await EnsureMySqlBusLocationColumnAsync(db, cancellationToken);
     }
 }
